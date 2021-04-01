@@ -7,10 +7,10 @@ set -x
 set -o pipefail
 export SHELLOPTS
 
-gcmd="goal -d ../net1/Primary"
+gcmd="goal -d ../../../net1/Primary"
 ACCOUNT=$(${gcmd} account list|awk '{ print $3 }'|head -n 1)
 
-gcmd2="goal -d ../net1/Node"
+gcmd2="goal -d ../../../net1/Node"
 ACCOUNT2=$(${gcmd2} account list|awk '{ print $3 }'|head -n 1)
 
 # non atomic example
