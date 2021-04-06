@@ -1,0 +1,18 @@
+#pragma version 2
+
+// verify there are more than two transactions in atomic transfer
+// verify first is call to stateful bond contract
+global GroupSize
+int 2
+>=
+
+gtxn 1 TypeEnum
+int appl
+==
+
+int VAR_TMPL_APPID
+gtxn 1 ApplicationID
+==
+
+&&
+&&
