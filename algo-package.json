@@ -1,0 +1,13 @@
+{
+  "name" : "algo-green-bond",
+  "version" : "1.0",
+  "stateful_contracts" : [ {
+    "name" : "SfContract-1",
+    "approval_program" : "src/v1/approval_program.teal",
+    "clear_state_program" : "src/v1/clear_state_program.teal",
+    "global-byteslices" : 1,
+    "global-ints" : 5,
+    "local-byteslices" : 0,
+    "local-ints" : 0
+  } ]
+}
