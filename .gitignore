@@ -26,3 +26,7 @@ yarn-error.log*
 
 .idea
 *.iml
+
+# algoDEA and network files
+/generated-src
+/net1

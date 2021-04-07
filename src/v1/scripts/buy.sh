@@ -35,4 +35,4 @@ ${gcmd} clerk rawsend -f signout.tx
 
 
 # clean up files
-rm *.tx
+rm -f *.tx

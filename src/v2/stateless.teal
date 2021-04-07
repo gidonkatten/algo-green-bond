@@ -1,5 +1,32 @@
 #pragma version 2
 
+// asset transaction type
+txn TypeEnum
+int axfer
+==
+bz not_bond_opt_in
+
+// opt-ins are transfers of 0 amount
+txn AssetAmount
+int 0
+==
+
+// the sender must be equal to the receiver for opt-ins. And the sender for contract accounts is the contract account.
+txn Sender
+txn AssetReceiver
+==
+
+// make sure it is opting in to the right asset
+txn XferAsset
+//int VAR_TMPL_BONDID
+int 1 // bond id
+==
+
+&&
+&&
+return
+
+not_bond_opt_in:
 // verify there are more than two transactions in atomic transfer
 // verify first is call to stateful bond contract
 global GroupSize
@@ -10,8 +37,9 @@ gtxn 1 TypeEnum
 int appl
 ==
 
-int VAR_TMPL_APPID
 gtxn 1 ApplicationID
+int 3
+//int VAR_TMPL_APPID
 ==
 
 &&

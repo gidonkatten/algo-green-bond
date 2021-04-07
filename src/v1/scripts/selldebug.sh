@@ -43,5 +43,5 @@ tealdbg debug ../approval_program.teal -d dr.msgp --group-index 0
 
 
 # clean up files
-rm *.tx
-rm dr.msgp
+rm -f *.tx
+rm -f dr.msgp
