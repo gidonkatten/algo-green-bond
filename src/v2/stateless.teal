@@ -1,46 +1,75 @@
 #pragma version 2
 
-// asset transaction type
+// IF: Single AssetTransfer THEN: Handle Opt-In
+global GroupSize
+int 1
+==
 txn TypeEnum
 int axfer
 ==
-bz not_bond_opt_in
+&&
+bnz bond_opt_in
 
-// opt-ins are transfers of 0 amount
+// IF: Grouped with ApplicationCall to AppID THEN: Approve ELSE: Disapprove
+global GroupSize
+int 2
+==
+gtxn 1 TypeEnum
+int appl
+==
+&&
+gtxn 1 ApplicationID
+//int VAR_TMPL_APPID
+int 3 // app id
+==
+&&
+return
+
+bond_opt_in:
+// Opt-Ins are transfers of 0 amount
 txn AssetAmount
 int 0
 ==
-
-// the sender must be equal to the receiver for opt-ins. And the sender for contract accounts is the contract account.
+// The receiver must be equal to the sender for opt-ins. Know sender is this contract!
 txn Sender
 txn AssetReceiver
 ==
-
-// make sure it is opting in to the right asset
+&&
+// Make sure it is opting in to the right asset
 txn XferAsset
 //int VAR_TMPL_BONDID
 int 1 // bond id
 ==
-
 &&
+// Opt-In Fee limit
+txn Fee
+int 1000
+<=
 &&
-return
-
-not_bond_opt_in:
-// verify there are more than two transactions in atomic transfer
-// verify first is call to stateful bond contract
-global GroupSize
-int 2
->=
-
-gtxn 1 TypeEnum
-int appl
+// Reject Opt-In after LastValid block
+txn LastValid
+//int VAR_TMPL_LV
+int 1020 // last valid round of lease
+<
+&&
+txn Lease
+//byte base64 VAR_TMPL_LEASE
+byte base64 TGVhc2UgdmFsdWUgKGF0IG1vc3QgMzItYnl0ZXMpCgo= // lease value
 ==
-
-gtxn 1 ApplicationID
-int 3
-//int VAR_TMPL_APPID
-==
-
 &&
+
+// Prevent Asset Clawback
+txn AssetSender
+global ZeroAddress
+==
+&&
+// Prevent Asset Close-To
+txn AssetCloseTo
+global ZeroAddress
+==
+&&
+// Prevent Rekey-To
+txn RekeyTo
+global ZeroAddress
+==
 &&

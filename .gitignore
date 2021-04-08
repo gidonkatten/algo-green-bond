@@ -30,3 +30,9 @@ yarn-error.log*
 # algoDEA and network files
 /generated-src
 /net1
+
+# algo files
+*.txn
+*.ltxn
+*.rej
+*.msgp

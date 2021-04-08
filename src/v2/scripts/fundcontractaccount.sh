@@ -31,12 +31,13 @@ echo "Stateless Contract Address = ${STATELESS_ADDRESS}"
 
 # send 1000 algos
 THOUSAND_ALGOS=1000000000
-#${gcmd} clerk send -a ${THOUSAND_ALGOS} -f ${ACCOUNT} -t ${STATELESS_ADDRESS}
+${gcmd} clerk send -a ${THOUSAND_ALGOS} -f ${ACCOUNT} -t ${STATELESS_ADDRESS}
 
 # send 1000 bonds to stateless address
 ASSETID=1
+LEASE_VALUE="TGVhc2UgdmFsdWUgKGF0IG1vc3QgMzItYnl0ZXMpCgo="
 # create transaction
-${gcmd} asset send -a 0 -f ${STATELESS_ADDRESS} -t ${STATELESS_ADDRESS} --assetid ${ASSETID} -o unsigned_escrow_optin.txn
+${gcmd} asset send -a 0 -f ${STATELESS_ADDRESS} -t ${STATELESS_ADDRESS} --assetid ${ASSETID} --lease ${LEASE_VALUE} -o unsigned_escrow_optin.txn
 # sign transaction with stateless contract logic
 ${gcmd} clerk sign -i unsigned_escrow_optin.txn -p ${STATELESS_TEAL} -o escrow_optin.ltxn
 # submit
