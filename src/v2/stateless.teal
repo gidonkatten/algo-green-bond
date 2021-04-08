@@ -14,11 +14,11 @@ bnz bond_opt_in
 global GroupSize
 int 2
 ==
-gtxn 1 TypeEnum
+gtxn 0 TypeEnum
 int appl
 ==
 &&
-gtxn 1 ApplicationID
+gtxn 0 ApplicationID
 //int VAR_TMPL_APPID
 int 3 // app id
 ==

@@ -1,53 +1,6 @@
 #pragma version 2
 
-// Handle each possible OnCompletion type. We don't have to worry about
-// handling ClearState, because the ClearStateProgram will execute in that
-// case, not the ApprovalProgram.
-
-txn OnCompletion
-int NoOp
-==
-bnz handle_noop
-
-txn OnCompletion
-int OptIn
-==
-bnz handle_optin
-
-txn OnCompletion
-int CloseOut
-==
-bnz handle_closeout
-
-txn OnCompletion
-int UpdateApplication
-==
-bnz handle_updateapp
-
-txn OnCompletion
-int DeleteApplication
-==
-bnz handle_deleteapp
-
-// Unexpected OnCompletion value. Should be unreachable.
-err
-
-handle_noop:
-// Handle NoOp
-
-handle_optin:
-// Handle OptIn
-
-handle_closeout:
-// Handle CloseOut
-
-// By default, disallow updating or deleting the app. Add custom authorization
-// logic below to allow updating or deletion in certain circumstances.
-handle_updateapp:
-handle_deleteapp:
-err
-
-// check if the app is being created
+// IF: App is being created THEN: Store arguments
 int 0
 txn ApplicationID
 ==
@@ -94,30 +47,91 @@ txna ApplicationArgs 4
 btoi
 app_global_put
 
-// return false as approval
-int 1
-return
+// return true as approval
+b success
+
 
 not_creation:
-// check if this is update
-int UpdateApplication
-txn OnCompletion
-==
-bz not_update
-// TODO HANDLE UPDATE
-b failure
+// Handle each possible OnCompletion type. We don't have to worry about
+// handling ClearState, because the ClearStateProgram will execute in that
+// case, not the ApprovalProgram.
 
-// check if this is NoOp transaction
-int NoOp
 txn OnCompletion
+int NoOp
 ==
+bnz handle_noop
+
+txn OnCompletion
+int OptIn
+==
+bnz handle_optin
+
+txn OnCompletion
+int CloseOut
+==
+bnz handle_closeout
+
+txn OnCompletion
+int UpdateApplication
+==
+bnz handle_updateapp
+
+txn OnCompletion
+int DeleteApplication
+==
+bnz handle_deleteapp
+
+//
+// Handle NoOp
+//
+handle_noop:
+
+// 0. call to this stateful contract
+gtxn 0 TypeEnum
+int appl
+==
+txn GroupIndex
+int 0
+==
+&&
 bz failed
 
-// if here then application call
-// verify there are three transactions in atomic transfer
+// check if buying bond
+txna ApplicationArgs 0
+byte "buy"
+==
+bnz buy
+
+// check if trading bond
+txna ApplicationArgs 0
+byte "trade"
+==
+bnz trade
+
+// check if claiming coupon
+txna ApplicationArgs 0
+byte "coupon"
+==
+bnz coupon
+
+// check if claiming principal
+txna ApplicationArgs 0
+byte "principal"
+==
+bnz principal
+b failed
+
+buy:
+trade:
+coupon:
+principal:
+
+
+// verify there are at least three transactions in atomic transfer
 // 0. call to this contract
-// 1. transfer of algos 
-// 2. transfer of bond
+// 1. transfer of bond
+// 2. transfer of algos from sender to escrow
+// 4. (optional) transfer of algos
 global GroupSize
 int 3
 ==
@@ -131,74 +145,24 @@ int axfer
 &&
 bz failed
 
-// check if buying bond
-txna ApplicationArgs 0
-byte "buy"
-==
-bnz buy
+//
+// Handle OptIn
+//
+handle_optin:
 
-// check if claiming principal
-txna ApplicationArgs 0
-byte "principal" 
-==
-bnz principal
+//
+// Handle CloseOut
+//
+handle_closeout:
+
+//
+// Handle DeleteApplication and UpdateApplication
+// By default, disallow updating or deleting the app. Add custom authorization
+// logic below to allow updating or deletion in certain circumstances.
+//
+handle_updateapp:
+handle_deleteapp:
 b failed
-
-buy:
-// check if before start date
-global LatestTimestamp
-byte "StartDate"
-app_global_get
-<
-bz failed
-
-// verify creator is receiving algos and sender receiving bond
-byte "Creator"
-app_global_get
-gtxn 1 Receiver
-==
-txn Sender
-gtxn 2 AssetReceiver
-==
-&&
-bz failed
-
-// verify paying BondCost (per bond)
-gtxn 1 Amount
-gtxn 2 AssetAmount
-/
-byte "BondCost"
-app_global_get
-==
-bnz success
-
-principal:
-// check if after end date
-global LatestTimestamp
-byte "EndDate"
-app_global_get
->=
-bz failed
-
-// verify creator is receiving bond and sender receiving algos
-byte "Creator"
-app_global_get
-gtxn 2 AssetReceiver
-==
-txn Sender
-gtxn 1 Receiver
-==
-&&
-bz failed
-
-// verify paying BondPrincipal (per bond)
-gtxn 1 Amount
-gtxn 2 AssetAmount
-/
-byte "BondPrincipal"
-app_global_get
-==
-bz failed
 
 // return true as success
 success:

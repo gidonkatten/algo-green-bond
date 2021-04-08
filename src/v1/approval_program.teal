@@ -47,9 +47,8 @@ txna ApplicationArgs 4
 btoi
 app_global_put
 
-// return false as approval
-int 1
-return
+// return true as approval
+b success
 
 not_creation:
 // check if this is NoOp transaction
