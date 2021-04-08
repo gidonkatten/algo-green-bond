@@ -37,11 +37,11 @@ ${gcmd2} clerk sign -i split-2.tx -o signout-2.tx
 # assemble transaction group
 cat signout-0.tx signout-1.tx signout-2.tx  > signout.tx
 # two options: can either generate context debug file or create your own to use
-${gcmd} clerk dryrun -t signout.tx --dryrun-dump -o dr.msgp
+${gcmd} clerk dryrun -t signout.tx --dryrun-dump -o dr.json
 # debug first transaction. Change index to 1 to debug second transaction etc
-tealdbg debug ../approval_program.teal -d dr.msgp --group-index 0
+tealdbg debug ../approval_program.teal -d dr.json --group-index 0
 
 
 # clean up files
 rm -f *.tx
-rm -f dr.msgp
+rm -f dr.json

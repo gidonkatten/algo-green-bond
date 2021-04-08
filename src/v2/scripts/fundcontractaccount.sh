@@ -40,9 +40,10 @@ LEASE_VALUE="TGVhc2UgdmFsdWUgKGF0IG1vc3QgMzItYnl0ZXMpCgo="
 ${gcmd} asset send -a 0 -f ${STATELESS_ADDRESS} -t ${STATELESS_ADDRESS} --assetid ${ASSETID} --lease ${LEASE_VALUE} -o unsigned_escrow_optin.txn
 # sign transaction with stateless contract logic
 ${gcmd} clerk sign -i unsigned_escrow_optin.txn -p ${STATELESS_TEAL} -o escrow_optin.ltxn
-# submit
+# submit opt in
 ${gcmd} clerk rawsend -f escrow_optin.ltxn
-#${gcmd} asset send -a 1000 -f ${ACCOUNT} -t ${STATELESS_ADDRESS} --assetid ${ASSETID}
+# submit transfer
+${gcmd} asset send -a 1000 -f ${ACCOUNT} -t ${STATELESS_ADDRESS} --assetid ${ASSETID}
 
 
 # clean up files
