@@ -86,62 +86,75 @@ txna ApplicationArgs 0
 byte "principal" 
 ==
 bnz principal
-b failed
+err
 
 buy:
-// check if before start date
+// verify buy:
+// a) before start date
+// b) creator is receiving algos
+// c) sender receiving bond
+// d) transfering bond
+// e) paying BondCost (per bond)
 global LatestTimestamp
 byte "StartDate"
 app_global_get
 <
-bz failed
-
-// verify creator is receiving algos and sender receiving bond
 byte "Creator"
 app_global_get
 gtxn 1 Receiver
 ==
+&&
 txn Sender
 gtxn 2 AssetReceiver
 ==
 &&
-bz failed
-
-// verify paying BondCost (per bond)
+byte "AssetID"
+app_global_get
+gtxn 2 XferAsset
+==
+&&
 gtxn 1 Amount
 gtxn 2 AssetAmount
 /
 byte "BondCost"
 app_global_get
 ==
+&&
 bnz success
+b failed
 
 principal:
-// check if after end date
+// verfiy sell:
+// a) after end date
+// b) creator is receiving bond
+// c) sender receiving algos
+// d) transfering bond
+// e) paying BondPrincipal (per bond)
 global LatestTimestamp
 byte "EndDate"
 app_global_get
 >=
-bz failed
-
-// verify creator is receiving bond and sender receiving algos
 byte "Creator"
 app_global_get
 gtxn 2 AssetReceiver
 ==
+&&
 txn Sender
 gtxn 1 Receiver
 ==
 &&
-bz failed
-
-// verify paying BondPrincipal (per bond)
+byte "AssetID"
+app_global_get
+gtxn 2 XferAsset
+==
+&&
 gtxn 1 Amount
 gtxn 2 AssetAmount
 /
 byte "BondPrincipal"
 app_global_get
 ==
+&&
 bz failed
 
 // return true as success

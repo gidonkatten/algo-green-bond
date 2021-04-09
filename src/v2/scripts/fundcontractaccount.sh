@@ -29,21 +29,44 @@ STATELESS_ADDRESS=$(
 )
 echo "Stateless Contract Address = ${STATELESS_ADDRESS}"
 
+
 # send 1000 algos
 THOUSAND_ALGOS=1000000000
 ${gcmd} clerk send -a ${THOUSAND_ALGOS} -f ${ACCOUNT} -t ${STATELESS_ADDRESS}
 
-# send 1000 bonds to stateless address
-ASSETID=1
+
+# send 5 bonds to stateless address
+ASSET_ID=1
 LEASE_VALUE="TGVhc2UgdmFsdWUgKGF0IG1vc3QgMzItYnl0ZXMpCgo="
 # create transaction
-${gcmd} asset send -a 0 -f ${STATELESS_ADDRESS} -t ${STATELESS_ADDRESS} --assetid ${ASSETID} --lease ${LEASE_VALUE} -o unsigned_escrow_optin.txn
+${gcmd} asset send -a 0 -f ${STATELESS_ADDRESS} -t ${STATELESS_ADDRESS} --assetid ${ASSET_ID} --lease ${LEASE_VALUE} -o unsigned_escrow_optin.txn
 # sign transaction with stateless contract logic
 ${gcmd} clerk sign -i unsigned_escrow_optin.txn -p ${STATELESS_TEAL} -o escrow_optin.ltxn
 # submit opt in
 ${gcmd} clerk rawsend -f escrow_optin.ltxn
 # submit transfer
-${gcmd} asset send -a 1000 -f ${ACCOUNT} -t ${STATELESS_ADDRESS} --assetid ${ASSETID}
+${gcmd} asset send -a 5 -f ${ACCOUNT} -t ${STATELESS_ADDRESS} --assetid ${ASSET_ID}
+
+# stateless address becomes new clawback
+${gcmd} asset config  --manager ${ACCOUNT} --new-clawback ${STATELESS_ADDRESS} --assetid ${ASSET_ID}
+
+# lock the asset by clearing the freezer and manager
+${gcmd} asset config  --manager ${ACCOUNT} --new-freezer "" --assetid ${ASSET_ID}
+${gcmd} asset config  --manager ${ACCOUNT} --new-manager "" --assetid ${ASSET_ID}
+${gcmd} asset info --assetid=${ASSET_ID}
+
+
+# send $10000 to stateless address
+STABLECOIN_ID=2
+LEASE_VALUE="TGVhc2UgdmFsdWUgKGF0IG1vc3QgMzItYnl0ZXMpCgp="
+# create transaction
+${gcmd} asset send -a 0 -f ${STATELESS_ADDRESS} -t ${STATELESS_ADDRESS} --assetid ${STABLECOIN_ID} --lease ${LEASE_VALUE} -o unsigned_escrow_optin.txn
+# sign transaction with stateless contract logic
+${gcmd} clerk sign -i unsigned_escrow_optin.txn -p ${STATELESS_TEAL} -o escrow_optin.ltxn
+# submit opt in
+${gcmd} clerk rawsend -f escrow_optin.ltxn
+# submit transfer
+${gcmd} asset send -a 10000 -f ${ACCOUNT} -t ${STATELESS_ADDRESS} --assetid ${ASSET_ID}
 
 
 # clean up files

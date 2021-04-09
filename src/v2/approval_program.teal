@@ -30,7 +30,7 @@ btoi
 app_global_put
 
 // store the id of bond
-byte "AssetID"
+byte "BondID"
 txna ApplicationArgs 2
 btoi
 app_global_put
@@ -119,31 +119,66 @@ txna ApplicationArgs 0
 byte "principal"
 ==
 bnz principal
-b failed
+err
 
 buy:
-trade:
-coupon:
-principal:
-
-
-// verify there are at least three transactions in atomic transfer
-// 0. call to this contract
-// 1. transfer of bond
-// 2. transfer of algos from sender to escrow
-// 4. (optional) transfer of algos
+// verify there are four transactions in atomic transfer
+// 0. call to this contract (verified above)
+// 1. transfer of bond from contract account to buyer
+// 2. transfer of algos from buyer to contract account (fee)
+// 3. transfer of USDC from buyer to contract account (BondCost * NoOfBonds)
+// + verify before start date
 global GroupSize
-int 3
+int 4
 ==
 gtxn 1 TypeEnum
-int pay
-==
-gtxn 2 TypeEnum
 int axfer
 ==
 &&
+gtxn 2 TypeEnum
+int pay
+==
+&&
+gtxn 2 Amount
+gtxn 1 Fee
+>=
+&&
+gtxn 3 TypeEnum
+int axfer
+==
+&&
+global LatestTimestamp
+byte "StartDate"
+app_global_get
+<
+bz failed
+
+// vefify:
+// a) tx1 bond is being transfered - if so must be using stateless
+// b) tx1 contract account to buyer
+
+trade:
+// verify there are at least three transactions in atomic transfer
+// 0. call to this contract (verified above)
+// 1. transfer of bond between third parties
+// 2. transfer of algos from sender to contract account (fee)
+// 3,4,... Optional (e.g for payment when transfering bonds)
+global GroupSize
+int 3
+>=
+gtxn 1 TypeEnum
+int axfer
+==
+&&
+gtxn 2 TypeEnum
+int pay
+==
 &&
 bz failed
+
+coupon:
+principal:
+
 
 //
 // Handle OptIn

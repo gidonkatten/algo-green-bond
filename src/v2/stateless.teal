@@ -8,12 +8,18 @@ txn TypeEnum
 int axfer
 ==
 &&
-bnz bond_opt_in
+bnz asset_opt_in
 
-// IF: Grouped with ApplicationCall to AppID THEN: Approve ELSE: Disapprove
+// verify there are at least three transactions in atomic transfer
+// 0. call to stateful contract VAR_TMPL_APPID
+// 1. transaction from this contract account
+// 2. transfer of algos from sender to contract account (for fee)
+// 3,4,... Optional
+// NOTE: USDC transaction verified in stateful contract
+// NOTE: Transfers between third parties are ignored
 global GroupSize
-int 2
-==
+int 3
+>=
 gtxn 0 TypeEnum
 int appl
 ==
@@ -23,22 +29,68 @@ gtxn 0 ApplicationID
 int 3 // app id
 ==
 &&
+txn GroupIndex
+int 1
+==
+&&
+gtxn 2 TypeEnum
+int pay
+==
+&&
+gtxn 2 Amount
+gtxn 1 Fee
+>=
+&&
+bz failed
+
+// check no rekeying, close-to and asset close-to
+gtxn 0 RekeyTo
+global ZeroAddress
+==
+gtxn 1 RekeyTo
+global ZeroAddress
+==
+&&
+gtxn 2 RekeyTo
+global ZeroAddress
+==
+&&
+gtxn 0 CloseRemainderTo
+global ZeroAddress
+==
+&&
+gtxn 1 CloseRemainderTo
+global ZeroAddress
+==
+&&
+gtxn 2 CloseRemainderTo
+global ZeroAddress
+==
+&&
+gtxn 0 AssetCloseTo
+global ZeroAddress
+==
+&&
+gtxn 1 AssetCloseTo
+global ZeroAddress
+==
+&&
+gtxn 2 AssetCloseTo
+global ZeroAddress
+bz failed
 return
 
-bond_opt_in:
-// Opt-Ins are transfers of 0 amount
+
+asset_opt_in:
+// Verify opt-in:
+// a) transfers of 0 amount
+// b) receiver must be equal to the sender for opt-ins. Know sender is this contract!
+// d) fee is max 1000 microalgos
 txn AssetAmount
 int 0
 ==
-// The receiver must be equal to the sender for opt-ins. Know sender is this contract!
 txn Sender
 txn AssetReceiver
-==
-&&
-// Make sure it is opting in to the right asset
-txn XferAsset
-//int VAR_TMPL_BONDID
-int 1 // bond id
 ==
 &&
 // Opt-In Fee limit
@@ -52,12 +104,6 @@ txn LastValid
 int 1020 // last valid round of lease
 <
 &&
-txn Lease
-//byte base64 VAR_TMPL_LEASE
-byte base64 TGVhc2UgdmFsdWUgKGF0IG1vc3QgMzItYnl0ZXMpCgo= // lease value
-==
-&&
-
 // Prevent Asset Clawback
 txn AssetSender
 global ZeroAddress
@@ -73,3 +119,33 @@ txn RekeyTo
 global ZeroAddress
 ==
 &&
+
+// e) verify opting into correct asset (bond or stablecoin) - use different lease for each
+txn XferAsset
+//int VAR_TMPL_BOND_ID
+int 1 // bond id
+bnz bond_opt_in
+txn XferAsset
+//int VAR_TMPL_STABLECOIN_ID
+int 2 // stablecoin id
+bnz stablecoin_opt_in
+b failed
+
+bond_opt_in:
+txn Lease
+//byte base64 VAR_TMPL_LEASE
+byte base64 TGVhc2UgdmFsdWUgKGF0IG1vc3QgMzItYnl0ZXMpCgo= // lease value
+==
+return
+
+stablecoin_opt_in:
+txn Lease
+//byte base64 VAR_TMPL_LEASE
+byte base64 TGVhc2UgdmFsdWUgKGF0IG1vc3QgMzItYnl0ZXMpCgp= // lease value
+==
+return
+
+// return false as failure
+failed:
+int 0
+return
