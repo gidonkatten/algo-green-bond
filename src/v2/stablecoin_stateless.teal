@@ -79,8 +79,8 @@ int 1000
 <=
 &&
 txn XferAsset
-//int VAR_TMPL_ASSETID
-int 1 // asset id
+//int VAR_TMPL_STABLECOIN_ID
+int 2 // stablecoin id
 ==
 &&
 txn LastValid

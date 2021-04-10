@@ -55,10 +55,13 @@ LOCAL_INTS=0
 
 BOND_COST=50       # $50
 BOND_PRINCIPAL=100 # $100
-BOND_LENGTH=30     # seconds
+SETUP_LENGTH=30    # seconds
+BUY_LENGTH=30      # seconds
+BOND_LENGTH=300    # seconds
 CURRRENT_DATE=$(date '+%s')
-START_DATE=$(($CURRRENT_DATE + 300))
-END_DATE=$(($START_DATE + $BOND_LENGTH))
+START_BUY_DATE=$(($CURRRENT_DATE + $SETUP_LENGTH))
+END_BUY_DATE=$(($START_BUY_DATE + $BUY_LENGTH))
+MATURITY_DATE=$(($END_BUY_DATE + $BOND_LENGTH))
 
 APP_ID=$(
   ${gcmd} app create --creator ${ACCOUNT} \
@@ -68,8 +71,9 @@ APP_ID=$(
     --global-ints $GLOBAL_INTS \
     --local-byteslices $LOCAL_BYTESLICES \
     --local-ints $LOCAL_INTS \
-    --app-arg "int:${START_DATE}" \
-    --app-arg "int:${END_DATE}" \
+    --app-arg "int:${START_BUY_DATE}" \
+    --app-arg "int:${END_BUY_DATE}" \
+    --app-arg "int:${MATURITY_DATE}" \
     --app-arg "int:${BOND_ID}" \
     --app-arg "int:${BOND_COST}" \
     --app-arg "int:${BOND_PRINCIPAL}" |

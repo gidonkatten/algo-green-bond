@@ -11,39 +11,45 @@ byte "Creator"
 txn Sender
 app_global_put
 
-// verify that 5 arguments passed
+// verify that 6 arguments passed
 txn NumAppArgs
 int 5
 ==
 bz failed
 
-// store the start date
-byte "StartDate"
+// store the start buy date
+byte "StartBuyDate"
 txna ApplicationArgs 0
 btoi
 app_global_put
 
-// store the end date
-byte "EndDate"
+// store the end buy date
+byte "EndBuyDate"
+txna ApplicationArgs 1
+btoi
+app_global_put
+
+// store the maturity date
+byte "MaturityDate"
 txna ApplicationArgs 1
 btoi
 app_global_put
 
 // store the id of bond
 byte "BondID"
-txna ApplicationArgs 2
+txna ApplicationArgs 3
 btoi
 app_global_put
 
 // store the cost of bond
 byte "BondCost"
-txna ApplicationArgs 3
+txna ApplicationArgs 4
 btoi
 app_global_put
 
 // store the principal of bond
 byte "BondPrincipal"
-txna ApplicationArgs 4
+txna ApplicationArgs 5
 btoi
 app_global_put
 
@@ -125,33 +131,99 @@ buy:
 // verify there are four transactions in atomic transfer
 // 0. call to this contract (verified above)
 // 1. transfer of bond from contract account to buyer
-// 2. transfer of algos from buyer to contract account (fee)
-// 3. transfer of USDC from buyer to contract account (BondCost * NoOfBonds)
-// + verify before start date
+// 2. transfer of algos from buyer to contract account (fee of tx1)
+// 3. transfer of USDC from buyer to contract account (NoOfBonds * BondCost)
+
 global GroupSize
 int 4
 ==
+
+// tx1
 gtxn 1 TypeEnum
 int axfer
 ==
 &&
+gtxn 1 AssetSender
+gtxn 1 Sender
+==
+&&
+gtxn 1 AssetReceiver
+txn Sender
+==
+&&
+byte "AssetID"
+app_global_get
+gtxn 1 XferAsset
+==
+&&
+
+// tx2
 gtxn 2 TypeEnum
 int pay
+==
+&&
+gtxn 2 Sender
+txn Sender
+==
+&&
+gtxn 2 Receiver
+gtxn 1 Sender
 ==
 &&
 gtxn 2 Amount
 gtxn 1 Fee
 >=
 &&
+
+// tx3
 gtxn 3 TypeEnum
 int axfer
 ==
 &&
+gtxn 3 AssetSender
+txn Sender
+&&
+gtxn 3 AssetReceiver
+byte "StablecoinEscrow"
+app_global_get
+==
+&&
+//VAR_TMPL_STABLECOIN_ID
+int 2 // stablecoin id
+gtxn 1 XferAsset
+==
+&&
+gtxn 1 AssetAmount // no. of bonds
+byte "BondCost" // bond cost
+app_global_get
+*
+gtxn 3 AssetAmount // stablecoin payment
+<=
+&&
+
+// verify in buy period
 global LatestTimestamp
-byte "StartDate"
+byte "StartBuyDate"
+app_global_get
+>
+&&
+global LatestTimestamp
+byte "EndBuyDate"
 app_global_get
 <
+&&
 bz failed
+
+// store in local storage how many bonds owned
+int 0
+byte "NoOfBondsOwned"
+app_local_get // will return 0 if doesn't exist
+gtxn 1 AssetAmount // no. of bonds
++
+int 0
+byte "NoOfBondsOwned"
+app_local_put
+b success
 
 // vefify:
 // a) tx1 bond is being transfered - if so must be using stateless
@@ -184,6 +256,13 @@ principal:
 // Handle OptIn
 //
 handle_optin:
+
+// Approve if optin is only transaction
+global GroupSize
+int 0
+==
+bz failure
+b success
 
 //
 // Handle CloseOut
