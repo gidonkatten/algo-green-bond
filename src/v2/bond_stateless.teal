@@ -13,10 +13,8 @@ bnz asset_opt_in
 // verify there are at least three transactions in atomic transfer
 // 0. call to stateful contract VAR_TMPL_APPID
 // 1. transaction from this contract account
-// 2. transfer of algos from sender to contract account (for fee)
-// 3,4,... Optional
-// NOTE: USDC transaction verified in stateful contract
-// NOTE: Transfers between third parties are ignored
+// 2,3,... Optional
+// NOTE: transaction for fee checked in stateful contract call
 global GroupSize
 int 3
 >=
@@ -33,14 +31,6 @@ txn GroupIndex
 int 1
 ==
 &&
-gtxn 2 TypeEnum
-int pay
-==
-&&
-gtxn 2 Amount
-gtxn 1 Fee
->=
-&&
 bz failed
 
 // check no rekeying, close-to and asset close-to
@@ -48,10 +38,6 @@ gtxn 0 RekeyTo
 global ZeroAddress
 ==
 gtxn 1 RekeyTo
-global ZeroAddress
-==
-&&
-gtxn 2 RekeyTo
 global ZeroAddress
 ==
 &&
@@ -63,10 +49,6 @@ gtxn 1 CloseRemainderTo
 global ZeroAddress
 ==
 &&
-gtxn 2 CloseRemainderTo
-global ZeroAddress
-==
-&&
 gtxn 0 AssetCloseTo
 global ZeroAddress
 ==
@@ -75,17 +57,15 @@ gtxn 1 AssetCloseTo
 global ZeroAddress
 ==
 &&
-gtxn 2 AssetCloseTo
-global ZeroAddress
-bz failed
 return
-
 
 asset_opt_in:
 // Verify opt-in:
 // a) transfers of 0 amount
 // b) receiver must be equal to the sender for opt-ins. Know sender is this contract!
-// d) fee is max 1000 microalgos
+// c) fee is max 1000 microalgos
+// d) opting into correct asset
+// e) reject opt-in after LastValid block
 txn AssetAmount
 int 0
 ==
@@ -93,17 +73,21 @@ txn Sender
 txn AssetReceiver
 ==
 &&
-// Opt-In Fee limit
 txn Fee
 int 1000
 <=
 &&
-// Reject Opt-In after LastValid block
+txn XferAsset
+//int VAR_TMPL_ASSETID
+int 1 // asset id
+==
+&&
 txn LastValid
-//int VAR_TMPL_LV
-int 1020 // last valid round of lease
+// int VAR_TMPL_OPTIN_EXPIRING_BLOCK
+int 1020 // opt-in expiring block
 <
 &&
+
 // Prevent Asset Clawback
 txn AssetSender
 global ZeroAddress
@@ -119,30 +103,6 @@ txn RekeyTo
 global ZeroAddress
 ==
 &&
-
-// e) verify opting into correct asset (bond or stablecoin) - use different lease for each
-txn XferAsset
-//int VAR_TMPL_BOND_ID
-int 1 // bond id
-bnz bond_opt_in
-txn XferAsset
-//int VAR_TMPL_STABLECOIN_ID
-int 2 // stablecoin id
-bnz stablecoin_opt_in
-b failed
-
-bond_opt_in:
-txn Lease
-//byte base64 VAR_TMPL_LEASE
-byte base64 TGVhc2UgdmFsdWUgKGF0IG1vc3QgMzItYnl0ZXMpCgo= // lease value
-==
-return
-
-stablecoin_opt_in:
-txn Lease
-//byte base64 VAR_TMPL_LEASE
-byte base64 TGVhc2UgdmFsdWUgKGF0IG1vc3QgMzItYnl0ZXMpCgp= // lease value
-==
 return
 
 // return false as failure

@@ -1,0 +1,112 @@
+#pragma version 2
+
+// IF: Single AssetTransfer THEN: Handle Opt-In
+global GroupSize
+int 1
+==
+txn TypeEnum
+int axfer
+==
+&&
+bnz asset_opt_in
+
+// verify there are at least three transactions in atomic transfer
+// 0. call to stateful contract VAR_TMPL_APPID
+// 1. Optional
+// 2. transaction from this contract account
+// 3,4,... Optional
+// NOTE: transaction for fee checked in stateful contract call
+global GroupSize
+int 3
+>=
+gtxn 0 TypeEnum
+int appl
+==
+&&
+gtxn 0 ApplicationID
+//int VAR_TMPL_APPID
+int 3 // app id
+==
+&&
+txn GroupIndex
+int 2
+==
+&&
+bz failed
+
+// check no rekeying, close-to and asset close-to
+gtxn 0 RekeyTo
+global ZeroAddress
+==
+gtxn 2 RekeyTo
+global ZeroAddress
+==
+&&
+gtxn 0 CloseRemainderTo
+global ZeroAddress
+==
+&&
+gtxn 2 CloseRemainderTo
+global ZeroAddress
+==
+&&
+gtxn 0 AssetCloseTo
+global ZeroAddress
+==
+&&
+gtxn 2 AssetCloseTo
+global ZeroAddress
+==
+&&
+return
+
+asset_opt_in:
+// Verify opt-in:
+// a) transfers of 0 amount
+// b) receiver must be equal to the sender for opt-ins. Know sender is this contract!
+// c) fee is max 1000 microalgos
+// d) opting into correct asset
+// e) reject opt-in after LastValid block
+txn AssetAmount
+int 0
+==
+txn Sender
+txn AssetReceiver
+==
+&&
+txn Fee
+int 1000
+<=
+&&
+txn XferAsset
+//int VAR_TMPL_ASSETID
+int 1 // asset id
+==
+&&
+txn LastValid
+// int VAR_TMPL_OPTIN_EXPIRING_BLOCK
+int 1020 // opt-in expiring block
+<
+&&
+
+// Prevent Asset Clawback
+txn AssetSender
+global ZeroAddress
+==
+&&
+// Prevent Asset Close-To
+txn AssetCloseTo
+global ZeroAddress
+==
+&&
+// Prevent Rekey-To
+txn RekeyTo
+global ZeroAddress
+==
+&&
+return
+
+// return false as failure
+failed:
+int 0
+return
