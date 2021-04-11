@@ -13,7 +13,7 @@ app_global_put
 
 // verify that 6 arguments passed
 txn NumAppArgs
-int 6
+int 8
 ==
 bz failed
 
@@ -252,10 +252,10 @@ byte "NoOfBondsOwned"
 app_local_get // will return 0 if doesn't exist
 gtxn 1 AssetAmount // no. of bonds
 +
-store 11 // store no. of bonds owned
+store 0 // store no. of bonds owned
 int 0
 byte "NoOfBondsOwned"
-load 11 // load no. of bonds owned
+load 0 // load no. of bonds owned
 app_local_put
 b success
 
@@ -322,13 +322,17 @@ byte "StablecoinEscrowAddr"
 app_global_get
 ==
 &&
-gtxn 1 AssetReceiver
+gtxn 2 AssetReceiver
 txn Sender
 ==
 &&
-gtxn 1 AssetAmount
-byte "BOND_COUPON_PAYMENT_VALUE"
+gtxn 2 AssetAmount
+byte "BondCouponPaymentValue"
 app_global_get
+int 0
+byte "NoOfBondsOwned"
+app_local_get // will return 0 if doesn't exist
+*
 ==
 &&
 
@@ -339,43 +343,39 @@ app_local_get // will return 0 if doesn't exist
 int 1
 +
 dup
-store 21 // store 'Local.NoOfInstallmentsPayed' + 1
+store 0 // store 'Local.NoOfInstallmentsPayed' + 1
 byte "BondCouponInstallments"
 app_global_get
 <=
 bz failed
 
-// verify that the installment time has passed (a < d):
-// a = MaturityDate - EndBuyDate
-// b = a / (Global.NoOfInstallments + 1)
-// c = a + (b * (Local.NoOfInstallmentsPayed + 1))
+// verify that the installment time has passed (c < d):
+// b = (MaturityDate - EndBuyDate) / Global.NoOfInstallments
+// c = EndBuyDate + (b * (Local.NoOfInstallmentsPayed + 1))
 // d = CurrentTime
 byte "MaturityDate"
 app_global_get
 byte "EndBuyDate"
 app_global_get
 -
-dup
-store 22 // store 'a'
 byte "BondCouponInstallments"
 app_global_get
-int 1
-+
 /
-store 23 // store 'b'
-load 22 // load 'a'
-load 23 // load 'b'
-load 21 // load 'Local.NoOfInstallmentsPayed' + 1
+store 1 // store 'b'
+byte "EndBuyDate"
+app_global_get
+load 1 // load 'b'
+load 0 // load 'Local.NoOfInstallmentsPayed' + 1
 *
 +
 global LatestTimestamp
-<
+<=
 bz failed
 
 // store in local storage how many bonds coupon payments
 int 0
 byte "NoOfBondCouponPayments"
-load 21 // load 'Local.NoOfInstallmentsPayed' + 1
+load 0 // load 'Local.NoOfInstallmentsPayed' + 1
 app_local_put
 b success
 
@@ -397,6 +397,14 @@ int axfer
 ==
 &&
 
+// verify have collected all coupon payments
+int 0
+byte "NoOfBondCouponPayments"
+app_local_get // will return 0 if doesn't exist
+byte "BondCouponInstallments"
+app_global_get
+==
+bz failed
 
 //
 // Handle OptIn

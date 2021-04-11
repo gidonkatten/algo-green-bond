@@ -35,16 +35,18 @@ echo "Bond ID = ${BOND_ID}"
 TEAL_APPROVAL_PROG="../approval_program.teal"
 TEAL_CLEAR_PROG="../clear_state_program.teal"
 
-GLOBAL_BYTESLICES=1
-GLOBAL_INTS=6
+GLOBAL_BYTESLICES=2
+GLOBAL_INTS=8
 LOCAL_BYTESLICES=0
-LOCAL_INTS=1
+LOCAL_INTS=2
 
-BOND_COST=50       # $50
-BOND_PRINCIPAL=100 # $100
-SETUP_LENGTH=30    # seconds
-BUY_LENGTH=30      # seconds
-BOND_LENGTH=300    # seconds
+BOND_COST=50000000 # $50.000000
+BOND_COUPON_PAYMENT_VALUE=2500000 # $2.500000
+BOND_COUPON_INSTALLMENTS=4 # pay BOND_COUPON 4 times evenly distributed throughout BOND_LENGTH
+BOND_PRINCIPAL=100000000 # $100.000000
+SETUP_LENGTH=20 # seconds
+BUY_LENGTH=100 # seconds
+BOND_LENGTH=300 # seconds
 CURRRENT_DATE=$(date '+%s')
 START_BUY_DATE=$(($CURRRENT_DATE + $SETUP_LENGTH))
 END_BUY_DATE=$(($START_BUY_DATE + $BUY_LENGTH))
@@ -62,6 +64,8 @@ ${gcmd} app create --creator ${ACCOUNT} \
   --app-arg "int:${MATURITY_DATE}" \
   --app-arg "int:${BOND_ID}" \
   --app-arg "int:${BOND_COST}" \
+  --app-arg "int:${BOND_COUPON_PAYMENT_VALUE}" \
+  --app-arg "int:${BOND_COUPON_INSTALLMENTS}" \
   --app-arg "int:${BOND_PRINCIPAL}" \
   --dryrun-dump -o dump1.dr
 
