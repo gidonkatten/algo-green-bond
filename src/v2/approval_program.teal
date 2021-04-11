@@ -262,7 +262,7 @@ b success
 trade:
 // verify there are at least three transactions in atomic transfer
 // 0. call to this contract (verified above)
-// 1. transfer of bond between third parties
+// 1. transfer of bond from sender to account 2
 // 2. transfer of algos from sender to bond contract account (fee of tx1)
 // 3,4,... Optional (e.g for payment when transfering bonds)
 
@@ -275,13 +275,63 @@ gtxn 1 TypeEnum
 int axfer
 ==
 &&
+gtxn 1 AssetSender
+txn Sender
+==
+&&
+gtxn 1 AssetReceiver
+txn Accounts 1
+==
+&&
+byte "BondID"
+app_global_get
+gtxn 1 XferAsset
+==
+&&
 
 // tx2
 gtxn 2 TypeEnum
 int pay
 ==
 &&
+gtxn 2 Sender
+txn Sender
+==
+&&
+gtxn 2 Receiver
+gtxn 1 Sender
+==
+&&
+gtxn 2 Amount
+gtxn 1 Fee
+>=
+&&
 bz failed
+
+// update in sender local storage how many bonds owned
+int 0
+byte "NoOfBondsOwned"
+app_local_get // will return 0 if doesn't exist
+gtxn 1 AssetAmount // no. of bonds
+-
+store 0 // store no. of bonds owned
+int 0
+byte "NoOfBondsOwned"
+load 0 // load no. of bonds owned
+app_local_put
+
+// update in buyer local storage how many bonds owned
+int 1
+byte "NoOfBondsOwned"
+app_local_get // will return 0 if doesn't exist
+gtxn 1 AssetAmount // no. of bonds
++
+store 1 // store no. of bonds owned
+int 1
+byte "NoOfBondsOwned"
+load 1 // load no. of bonds owned
+app_local_put
+b success
 
 coupon:
 // verify there are three transactions in atomic transfer

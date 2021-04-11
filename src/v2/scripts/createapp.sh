@@ -100,7 +100,8 @@ ${gcmd} app read --app-id ${APP_ID} --guess-format --global --from ${ACCOUNT}
 ${gcmd2} asset send -a 0 -f ${ACCOUNT2} -t ${ACCOUNT2} --assetid ${BOND_ID}
 ${gcmd2} asset send -a 0 -f ${ACCOUNT2} -t ${ACCOUNT2} --assetid ${STABLECOIN_ID}
 
-# need to opt in second account to stateful contract
+# need to opt in accounts to stateful contract
+${gcmd} app optin --app-id ${APP_ID} --from ${ACCOUNT}
 ${gcmd2} app optin --app-id ${APP_ID} --from ${ACCOUNT2}
 
 # send $1000 to second account so has funds to buy bond
