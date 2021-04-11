@@ -13,7 +13,7 @@ app_global_put
 
 // verify that 6 arguments passed
 txn NumAppArgs
-int 5
+int 6
 ==
 bz failed
 
@@ -31,7 +31,7 @@ app_global_put
 
 // store the maturity date
 byte "MaturityDate"
-txna ApplicationArgs 1
+txna ApplicationArgs 2
 btoi
 app_global_put
 
@@ -182,10 +182,12 @@ int axfer
 &&
 gtxn 3 AssetSender
 txn Sender
+==
 &&
 gtxn 3 AssetReceiver
-byte "StablecoinEscrow"
-app_global_get
+//byte "StablecoinEscrowAddr"
+//app_global_get
+byte "EXYLPVGCJ2S73W44ZUR4NDZQNVZMA576QSXC7PLGRY43MC3AVPQ2DHBG5E" // remove when no longer no addr beforehand
 ==
 &&
 //VAR_TMPL_STABLECOIN_ID
@@ -220,8 +222,8 @@ byte "NoOfBondsOwned"
 app_local_get // will return 0 if doesn't exist
 gtxn 1 AssetAmount // no. of bonds
 +
-int 0
 byte "NoOfBondsOwned"
+int 0
 app_local_put
 b success
 
@@ -259,9 +261,9 @@ handle_optin:
 
 // Approve if optin is only transaction
 global GroupSize
-int 0
+int 1
 ==
-bz failure
+bz failed
 b success
 
 //

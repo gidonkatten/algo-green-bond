@@ -25,8 +25,8 @@ BOND_ID=$(
     --total 5 \
     --unitname bond \
     --decimals 0 \
-    -defaultfrozen=true \
-    awk '{ print $6 }' | tail -n 1
+    --defaultfrozen=true \
+    | awk '{ print $6 }' | tail -n 1
 )
 echo "Bond ID = ${BOND_ID}"
 
@@ -36,22 +36,18 @@ STABLECOIN_ID=$(
     --total 100000 \
     --unitname USDC \
     --decimals 2 \
-    awk '{ print $6 }' | tail -n 1
+    | awk '{ print $6 }' | tail -n 1
 )
 echo "Stablecoin ID = ${STABLECOIN_ID}"
-
-# need to opt in second account to new bond and stablecoin
-${gcmd2} asset send -a 0 -f ${ACCOUNT2} -t ${ACCOUNT2} --creator ${ACCOUNT} --assetid ${BOND_ID}
-${gcmd2} asset send -a 0 -f ${ACCOUNT2} -t ${ACCOUNT2} --creator ${ACCOUNT} --assetid ${STABLECOIN_ID}
 
 # create app
 TEAL_APPROVAL_PROG="../approval_program.teal"
 TEAL_CLEAR_PROG="../clear_state_program.teal"
 
 GLOBAL_BYTESLICES=1
-GLOBAL_INTS=5
+GLOBAL_INTS=6
 LOCAL_BYTESLICES=0
-LOCAL_INTS=0
+LOCAL_INTS=1
 
 BOND_COST=50       # $50
 BOND_PRINCIPAL=100 # $100
@@ -84,3 +80,10 @@ echo "App ID = ${APP_ID}"
 
 # Read global state of contract
 ${gcmd} app read --app-id ${APP_ID} --guess-format --global --from ${ACCOUNT}
+
+# need to opt in second account to new bond and stablecoin
+${gcmd2} asset send -a 0 -f ${ACCOUNT2} -t ${ACCOUNT2} --creator ${ACCOUNT} --assetid ${BOND_ID}
+${gcmd2} asset send -a 0 -f ${ACCOUNT2} -t ${ACCOUNT2} --creator ${ACCOUNT} --assetid ${STABLECOIN_ID}
+
+# need to opt in second account to stateful contract
+${gcmd2} app optin --app-id ${APP_ID} --from ${ACCOUNT2}

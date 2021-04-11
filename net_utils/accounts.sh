@@ -16,14 +16,28 @@ ${gcmd} account info -a=${ACCOUNT2}
 
 printf "\n\n\n"
 
-# compile stateless contract to get its address
-echo "Contract Account:"
-STATELESS_TEAL="../src/v2/stateless.teal"
-STATELESS_ADDRESS=$(
-  ${gcmd} clerk compile -n ${STATELESS_TEAL} \
+# compile stateless contract for bond to get its address
+echo "Bond Contract Account:"
+BOND_STATELESS_TEAL="../src/v2/bond_stateless.teal"
+BOND_STATELESS_ADDRESS=$(
+  ${gcmd} clerk compile -n ${BOND_STATELESS_TEAL} \
   | awk '{ print $2 }' \
   | head -n 1
 )
-echo "Stateless Contract Address = ${STATELESS_ADDRESS}"
-${gcmd} account balance -a=${STATELESS_ADDRESS}
-${gcmd} account info -a=${STATELESS_ADDRESS}
+echo "Bond Stateless Contract Address = ${BOND_STATELESS_ADDRESS}"
+${gcmd} account balance -a=${BOND_STATELESS_ADDRESS}
+${gcmd} account info -a=${BOND_STATELESS_ADDRESS}
+
+printf "\n\n\n"
+
+# compile stateless contract for stablecoin to get its address
+echo "Stablecoin Contract Account:"
+STABLECOIN_STATELESS_TEAL="../src/v2/stablecoin_stateless.teal"
+STABLECOIN_STATELESS_ADDRESS=$(
+  ${gcmd} clerk compile -n ${STABLECOIN_STATELESS_TEAL} \
+  | awk '{ print $2 }' \
+  | head -n 1
+)
+echo "Stablecoin Stateless Contract Address = ${STABLECOIN_STATELESS_ADDRESS}"
+${gcmd} account balance -a=${STABLECOIN_STATELESS_ADDRESS}
+${gcmd} account info -a=${STABLECOIN_STATELESS_ADDRESS}
