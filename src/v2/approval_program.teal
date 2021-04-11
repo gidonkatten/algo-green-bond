@@ -47,9 +47,21 @@ txna ApplicationArgs 4
 btoi
 app_global_put
 
+// store the coupon payment value
+byte "BondCouponPaymentValue"
+txna ApplicationArgs 5
+btoi
+app_global_put
+
+// store the number of coupon payment installments
+byte "BondCouponInstallments"
+txna ApplicationArgs 6
+btoi
+app_global_put
+
 // store the principal of bond
 byte "BondPrincipal"
-txna ApplicationArgs 5
+txna ApplicationArgs 7
 btoi
 app_global_put
 
@@ -149,9 +161,9 @@ b success
 buy:
 // verify there are four transactions in atomic transfer
 // 0. call to this contract (verified above)
-// 1. transfer of bond from contract account to buyer
-// 2. transfer of algos from buyer to contract account (fee of tx1)
-// 3. transfer of USDC from buyer to contract account (NoOfBonds * BondCost)
+// 1. transfer of bond from bond contract account to buyer
+// 2. transfer of algos from buyer to bond contract account (fee of tx1)
+// 3. transfer of USDC from buyer to stablecoin contract account (NoOfBonds * BondCost)
 
 global GroupSize
 int 4
@@ -240,30 +252,31 @@ byte "NoOfBondsOwned"
 app_local_get // will return 0 if doesn't exist
 gtxn 1 AssetAmount // no. of bonds
 +
-store 11 // store no. of bonds owned in scratch position 11
+store 11 // store no. of bonds owned
 int 0
 byte "NoOfBondsOwned"
-load 11
+load 11 // load no. of bonds owned
 app_local_put
 b success
-
-// vefify:
-// a) tx1 bond is being transfered - if so must be using stateless
-// b) tx1 contract account to buyer
 
 trade:
 // verify there are at least three transactions in atomic transfer
 // 0. call to this contract (verified above)
 // 1. transfer of bond between third parties
-// 2. transfer of algos from sender to contract account (fee)
+// 2. transfer of algos from sender to bond contract account (fee of tx1)
 // 3,4,... Optional (e.g for payment when transfering bonds)
+
 global GroupSize
 int 3
 >=
+
+// tx1
 gtxn 1 TypeEnum
 int axfer
 ==
 &&
+
+// tx2
 gtxn 2 TypeEnum
 int pay
 ==
@@ -271,7 +284,118 @@ int pay
 bz failed
 
 coupon:
+// verify there are three transactions in atomic transfer
+// 0. call to this contract (verified above)
+// 1. transfer of algos from buyer to stablecoin contract account (fee of tx2)
+// 2. transfer of USDC from stablecoin contract account to owner
+
+global GroupSize
+int 3
+==
+
+// tx1
+gtxn 1 TypeEnum
+int pay
+==
+&&
+gtxn 1 Sender
+txn Sender
+==
+&&
+gtxn 1 Receiver
+byte "StablecoinEscrowAddr"
+app_global_get
+==
+&&
+gtxn 1 Amount
+gtxn 2 Fee
+>=
+&&
+
+// tx2
+gtxn 2 TypeEnum
+int axfer
+==
+&&
+gtxn 2 Sender
+byte "StablecoinEscrowAddr"
+app_global_get
+==
+&&
+gtxn 1 AssetReceiver
+txn Sender
+==
+&&
+gtxn 1 AssetAmount
+byte "BOND_COUPON_PAYMENT_VALUE"
+app_global_get
+==
+&&
+
+// verify (Local.NoOfInstallmentsPayed + 1) <= Global.NoOfInstallments
+int 0
+byte "NoOfBondCouponPayments"
+app_local_get // will return 0 if doesn't exist
+int 1
++
+dup
+store 21 // store 'Local.NoOfInstallmentsPayed' + 1
+byte "BondCouponInstallments"
+app_global_get
+<=
+bz failed
+
+// verify that the installment time has passed (a < d):
+// a = MaturityDate - EndBuyDate
+// b = a / (Global.NoOfInstallments + 1)
+// c = a + (b * (Local.NoOfInstallmentsPayed + 1))
+// d = CurrentTime
+byte "MaturityDate"
+app_global_get
+byte "EndBuyDate"
+app_global_get
+-
+dup
+store 22 // store 'a'
+byte "BondCouponInstallments"
+app_global_get
+int 1
++
+/
+store 23 // store 'b'
+load 22 // load 'a'
+load 23 // load 'b'
+load 21 // load 'Local.NoOfInstallmentsPayed' + 1
+*
++
+global LatestTimestamp
+<
+bz failed
+
+// store in local storage how many bonds coupon payments
+int 0
+byte "NoOfBondCouponPayments"
+load 21 // load 'Local.NoOfInstallmentsPayed' + 1
+app_local_put
+b success
+
 principal:
+// verify there are four transactions in atomic transfer
+// 0. call to this contract (verified above)
+// 1. transfer of bond from sender to bond contract account
+// 2. transfer of USDC from stablecoin contract account to sender (NoOfBonds * BondPrincipal)
+// 3. transfer of algos from sender to contract account (fee of tx1)
+// 4. transfer of algos from sender to contract account (fee of tx2)
+
+global GroupSize
+int 5
+==
+
+// tx1
+gtxn 1 TypeEnum
+int axfer
+==
+&&
 
 
 //
