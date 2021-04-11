@@ -237,12 +237,12 @@ gtxn 3 AssetAmount // stablecoin payment
 global LatestTimestamp
 byte "StartBuyDate"
 app_global_get
->
+>=
 &&
 global LatestTimestamp
 byte "EndBuyDate"
 app_global_get
-<
+<=
 &&
 bz failed
 
@@ -349,10 +349,10 @@ app_global_get
 <=
 bz failed
 
-// verify that the installment time has passed (c < d):
-// b = (MaturityDate - EndBuyDate) / Global.NoOfInstallments
-// c = EndBuyDate + (b * (Local.NoOfInstallmentsPayed + 1))
-// d = CurrentTime
+// verify that the installment time has passed (b <= c):
+// a = (MaturityDate - EndBuyDate) / Global.NoOfInstallments
+// b = EndBuyDate + (a * (Local.NoOfInstallmentsPayed + 1))
+// c = CurrentTime
 byte "MaturityDate"
 app_global_get
 byte "EndBuyDate"
@@ -361,10 +361,10 @@ app_global_get
 byte "BondCouponInstallments"
 app_global_get
 /
-store 1 // store 'b'
+store 1 // store 'a'
 byte "EndBuyDate"
 app_global_get
-load 1 // load 'b'
+load 1 // load 'a'
 load 0 // load 'Local.NoOfInstallmentsPayed' + 1
 *
 +
@@ -396,6 +396,84 @@ gtxn 1 TypeEnum
 int axfer
 ==
 &&
+gtxn 1 AssetSender
+txn Sender
+==
+&&
+gtxn 1 AssetReceiver
+gtxn 1 Sender
+==
+&&
+byte "BondID"
+app_global_get
+gtxn 1 XferAsset
+==
+&&
+
+// tx2
+gtxn 2 TypeEnum
+int axfer
+==
+&&
+gtxn 2 Sender
+byte "StablecoinEscrowAddr"
+app_global_get
+==
+&&
+gtxn 2 AssetReceiver
+txn Sender
+==
+&&
+//VAR_TMPL_STABLECOIN_ID
+int 2 // stablecoin id
+gtxn 2 XferAsset
+==
+&&
+gtxn 1 AssetAmount // NoOfBonds
+byte "BondPrincipal"
+app_global_get
+*
+gtxn 2 AssetAmount // stablecoin payment
+<=
+&&
+
+// tx3
+gtxn 3 TypeEnum
+int pay
+==
+&&
+gtxn 3 Sender
+txn Sender
+==
+&&
+gtxn 3 Receiver
+gtxn 1 Sender
+==
+&&
+gtxn 3 Amount
+gtxn 1 Fee
+>=
+&&
+
+// tx4
+gtxn 4 TypeEnum
+int pay
+==
+&&
+gtxn 4 Sender
+txn Sender
+==
+&&
+gtxn 4 Receiver
+byte "StablecoinEscrowAddr"
+app_global_get
+==
+&&
+gtxn 4 Amount
+gtxn 2 Fee
+>=
+&&
+bz failed
 
 // verify have collected all coupon payments
 int 0
@@ -404,7 +482,28 @@ app_local_get // will return 0 if doesn't exist
 byte "BondCouponInstallments"
 app_global_get
 ==
-bz failed
+
+// verify past maturity date
+global LatestTimestamp
+byte "MaturityDate"
+app_global_get
+>=
+&&
+
+// verify sending all bonds owned and opting out
+int 0
+byte "NoOfBondsOwned"
+app_local_get
+gtxn 1 AssetAmount
+==
+&&
+
+// store in local storage 0 bonds owned
+int 0
+byte "NoOfBondsOwned"
+int 0 // no. of bonds owned
+app_local_put
+b success
 
 //
 // Handle OptIn
