@@ -33,9 +33,9 @@ echo "Bond ID = ${BOND_ID}"
 STABLECOIN_ID=$(
   ${gcmd} asset create \
     --creator ${ACCOUNT} \
-    --total 100000 \
+    --total 100000000000000000 \
     --unitname USDC \
-    --decimals 2 \
+    --decimals 6 \
     | awk '{ print $6 }' | tail -n 1
 )
 echo "Stablecoin ID = ${STABLECOIN_ID}"
@@ -44,16 +44,16 @@ echo "Stablecoin ID = ${STABLECOIN_ID}"
 TEAL_APPROVAL_PROG="../approval_program.teal"
 TEAL_CLEAR_PROG="../clear_state_program.teal"
 
-GLOBAL_BYTESLICES=1
+GLOBAL_BYTESLICES=2
 GLOBAL_INTS=6
 LOCAL_BYTESLICES=0
 LOCAL_INTS=1
 
-BOND_COST=50       # $50
-BOND_PRINCIPAL=100 # $100
-SETUP_LENGTH=30    # seconds
-BUY_LENGTH=30      # seconds
-BOND_LENGTH=300    # seconds
+BOND_COST=50000000 # $50.000000
+BOND_PRINCIPAL=100000000 # $100.000000
+SETUP_LENGTH=20 # seconds
+BUY_LENGTH=1000000 # seconds
+BOND_LENGTH=300 # seconds
 CURRRENT_DATE=$(date '+%s')
 START_BUY_DATE=$(($CURRRENT_DATE + $SETUP_LENGTH))
 END_BUY_DATE=$(($START_BUY_DATE + $BUY_LENGTH))
@@ -78,12 +78,26 @@ APP_ID=$(
 )
 echo "App ID = ${APP_ID}"
 
+# Set to the stablecoin contract account address
+# compile stateless contract for stablecoin to get its address
+STABLECOIN_STATELESS_TEAL="../stablecoin_stateless.teal"
+STABLECOIN_STATELESS_ADDRESS=$(
+  ${gcmd2} clerk compile -n ${STABLECOIN_STATELESS_TEAL} \
+  | awk '{ print $2 }' \
+  | head -n 1
+)
+echo "Stablecoin Stateless Contract Address = ${STABLECOIN_STATELESS_ADDRESS}"
+${gcmd} app call --app-id ${APP_ID} --app-arg "str:update" --app-arg "addr:${STABLECOIN_STATELESS_ADDRESS}" --from ${ACCOUNT}
+
 # Read global state of contract
 ${gcmd} app read --app-id ${APP_ID} --guess-format --global --from ${ACCOUNT}
 
 # need to opt in second account to new bond and stablecoin
-${gcmd2} asset send -a 0 -f ${ACCOUNT2} -t ${ACCOUNT2} --creator ${ACCOUNT} --assetid ${BOND_ID}
-${gcmd2} asset send -a 0 -f ${ACCOUNT2} -t ${ACCOUNT2} --creator ${ACCOUNT} --assetid ${STABLECOIN_ID}
+${gcmd2} asset send -a 0 -f ${ACCOUNT2} -t ${ACCOUNT2} --assetid ${BOND_ID}
+${gcmd2} asset send -a 0 -f ${ACCOUNT2} -t ${ACCOUNT2} --assetid ${STABLECOIN_ID}
 
 # need to opt in second account to stateful contract
 ${gcmd2} app optin --app-id ${APP_ID} --from ${ACCOUNT2}
+
+# send $1000 to second account so has funds to buy bond
+${gcmd} asset send -a 1000000000 -f ${ACCOUNT} -t ${ACCOUNT2} --assetid ${STABLECOIN_ID}

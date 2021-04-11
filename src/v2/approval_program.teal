@@ -102,6 +102,12 @@ int 0
 &&
 bz failed
 
+// check if setting stablecoin address
+txna ApplicationArgs 0
+byte "update"
+==
+bnz update
+
 // check if buying bond
 txna ApplicationArgs 0
 byte "buy"
@@ -127,6 +133,19 @@ byte "principal"
 bnz principal
 err
 
+update:
+// If before start date then can set the stablecoin contract account address
+
+global LatestTimestamp
+byte "StartBuyDate"
+app_global_get
+<
+bz failed
+byte "StablecoinEscrowAddr"
+txna ApplicationArgs 1
+app_global_put
+b success
+
 buy:
 // verify there are four transactions in atomic transfer
 // 0. call to this contract (verified above)
@@ -151,7 +170,7 @@ gtxn 1 AssetReceiver
 txn Sender
 ==
 &&
-byte "AssetID"
+byte "BondID"
 app_global_get
 gtxn 1 XferAsset
 ==
@@ -180,19 +199,18 @@ gtxn 3 TypeEnum
 int axfer
 ==
 &&
-gtxn 3 AssetSender
+gtxn 3 Sender
 txn Sender
 ==
 &&
 gtxn 3 AssetReceiver
-//byte "StablecoinEscrowAddr"
-//app_global_get
-byte "EXYLPVGCJ2S73W44ZUR4NDZQNVZMA576QSXC7PLGRY43MC3AVPQ2DHBG5E" // remove when no longer no addr beforehand
+byte "StablecoinEscrowAddr"
+app_global_get
 ==
 &&
 //VAR_TMPL_STABLECOIN_ID
 int 2 // stablecoin id
-gtxn 1 XferAsset
+gtxn 3 XferAsset
 ==
 &&
 gtxn 1 AssetAmount // no. of bonds
@@ -222,8 +240,10 @@ byte "NoOfBondsOwned"
 app_local_get // will return 0 if doesn't exist
 gtxn 1 AssetAmount // no. of bonds
 +
-byte "NoOfBondsOwned"
+store 11 // store no. of bonds owned in scratch position 11
 int 0
+byte "NoOfBondsOwned"
+load 11
 app_local_put
 b success
 

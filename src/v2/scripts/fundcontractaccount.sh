@@ -44,35 +44,35 @@ ${gcmd} clerk send -a ${THOUSAND_ALGOS} -f ${ACCOUNT} -t ${BOND_STATELESS_ADDRES
 ${gcmd} clerk send -a ${THOUSAND_ALGOS} -f ${ACCOUNT} -t ${STABLECOIN_STATELESS_ADDRESS}
 
 # send 5 bonds to stateless address for bond
-ASSET_ID=1
+BOND_ID=1
 # create transaction
-${gcmd} asset send -a 0 -f ${BOND_STATELESS_ADDRESS} -t ${BOND_STATELESS_ADDRESS} --assetid ${ASSET_ID} -o unsigned_escrow_optin.txn
+${gcmd} asset send -a 0 -f ${BOND_STATELESS_ADDRESS} -t ${BOND_STATELESS_ADDRESS} --assetid ${BOND_ID} -o unsigned_escrow_bond_optin.txn
 # sign transaction with stateless contract logic
-${gcmd} clerk sign -i unsigned_escrow_optin.txn -p ${BOND_STATELESS_TEAL} -o escrow_optin.ltxn
+${gcmd} clerk sign -i unsigned_escrow_bond_optin.txn -p ${BOND_STATELESS_TEAL} -o escrow_bond_optin.ltxn
 # submit opt in
-${gcmd} clerk rawsend -f escrow_optin.ltxn
+${gcmd} clerk rawsend -f escrow_bond_optin.ltxn
 # submit transfer
-${gcmd} asset send -a 5 -f ${ACCOUNT} -t ${BOND_STATELESS_ADDRESS} --assetid ${ASSET_ID}
+${gcmd} asset send -a 5 -f ${ACCOUNT} -t ${BOND_STATELESS_ADDRESS} --assetid ${BOND_ID} --clawback ${ACCOUNT}
 
 # stateless address becomes new clawback
-${gcmd} asset config  --manager ${ACCOUNT} --new-clawback ${BOND_STATELESS_ADDRESS} --assetid ${ASSET_ID}
+${gcmd} asset config  --manager ${ACCOUNT} --new-clawback ${BOND_STATELESS_ADDRESS} --assetid ${BOND_ID}
 
 # lock the asset by clearing the freezer and manager
-${gcmd} asset config  --manager ${ACCOUNT} --new-freezer "" --assetid ${ASSET_ID}
-${gcmd} asset config  --manager ${ACCOUNT} --new-manager "" --assetid ${ASSET_ID}
-${gcmd} asset info --assetid=${ASSET_ID}
+${gcmd} asset config  --manager ${ACCOUNT} --new-freezer "" --assetid ${BOND_ID}
+${gcmd} asset config  --manager ${ACCOUNT} --new-manager "" --assetid ${BOND_ID}
+${gcmd} asset info --assetid=${BOND_ID}
 
 
 # send $10000 to stateless address for stablecoin
 STABLECOIN_ID=2
 # create transaction
-${gcmd} asset send -a 0 -f ${STABLECOIN_STATELESS_ADDRESS} -t ${STABLECOIN_STATELESS_ADDRESS} --assetid ${STABLECOIN_ID} -o unsigned_escrow_optin.txn
+${gcmd} asset send -a 0 -f ${STABLECOIN_STATELESS_ADDRESS} -t ${STABLECOIN_STATELESS_ADDRESS} --assetid ${STABLECOIN_ID} -o unsigned_escrow_stablecoin_optin.txn
 # sign transaction with stateless contract logic
-${gcmd} clerk sign -i unsigned_escrow_optin.txn -p ${STABLECOIN_STATELESS_TEAL} -o escrow_optin.ltxn
+${gcmd} clerk sign -i unsigned_escrow_stablecoin_optin.txn -p ${STABLECOIN_STATELESS_TEAL} -o escrow_stablecoin_optin.ltxn
 # submit opt in
-${gcmd} clerk rawsend -f escrow_optin.ltxn
+${gcmd} clerk rawsend -f escrow_stablecoin_optin.ltxn
 # submit transfer
-${gcmd} asset send -a 10000 -f ${ACCOUNT} -t ${STABLECOIN_STATELESS_ADDRESS} --assetid ${ASSET_ID}
+${gcmd} asset send -a 10000000000 -f ${ACCOUNT} -t ${STABLECOIN_STATELESS_ADDRESS} --assetid ${STABLECOIN_ID}
 
 
 # clean up files

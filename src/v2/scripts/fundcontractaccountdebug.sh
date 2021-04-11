@@ -29,18 +29,28 @@ BOND_STATELESS_ADDRESS=$(
 )
 echo "Bond Stateless Contract Address = ${BOND_STATELESS_ADDRESS}"
 
-# send 1000 algos
+# compile stateless contract for stablecoin to get its address
+STABLECOIN_STATELESS_TEAL="../stablecoin_stateless.teal"
+STABLECOIN_STATELESS_ADDRESS=$(
+  ${gcmd} clerk compile -n ${STABLECOIN_STATELESS_TEAL} \
+  | awk '{ print $2 }' \
+  | head -n 1
+)
+echo "Stablecoin Stateless Contract Address = ${STABLECOIN_STATELESS_ADDRESS}"
+
+# send 1000 algos to each stateless account
 THOUSAND_ALGOS=1000000000
 ${gcmd} clerk send -a ${THOUSAND_ALGOS} -f ${ACCOUNT} -t ${BOND_STATELESS_ADDRESS}
+${gcmd} clerk send -a ${THOUSAND_ALGOS} -f ${ACCOUNT} -t ${STABLECOIN_STATELESS_ADDRESS}
 
-# send 1000 bonds to stateless address
-ASSETID=1
+# debug opt in
+BOND_ID=1
 # create transaction
-${gcmd} asset send -a 0 -f ${BOND_STATELESS_ADDRESS} -t ${BOND_STATELESS_ADDRESS} --assetid ${ASSETID} -o unsigned_escrow_optin.txn
+${gcmd} asset send -a 0 -f ${BOND_STATELESS_ADDRESS} -t ${BOND_STATELESS_ADDRESS} --assetid ${BOND_ID} -o unsigned_escrow_bond_optin.txn
 # sign transaction with stateless contract logic
-${gcmd} clerk sign -i unsigned_escrow_optin.txn -p ${BOND_STATELESS_TEAL} -o escrow_optin.ltxn
+${gcmd} clerk sign -i unsigned_escrow_bond_optin.txn -p ${BOND_STATELESS_TEAL} -o escrow_bond_optin.ltxn
 # two options: can either generate context debug file or create your own to use
-${gcmd} clerk dryrun -t escrow_optin.ltxn --dryrun-dump -o dr.json
+${gcmd} clerk dryrun -t escrow_bond_optin.ltxn --dryrun-dump -o dr.json
 # debug
 tealdbg debug ${BOND_STATELESS_TEAL} -d dr.json
 

@@ -85,7 +85,7 @@ int 2 // stablecoin id
 &&
 txn LastValid
 // int VAR_TMPL_OPTIN_EXPIRING_BLOCK
-int 1020 // opt-in expiring block
+int 1500 // opt-in expiring block
 <
 &&
 
