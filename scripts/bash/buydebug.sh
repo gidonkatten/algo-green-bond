@@ -8,11 +8,13 @@ set -o pipefail
 export SHELLOPTS
 
 
-gcmd2="goal -d ../../../net1/Node"
+gcmd2="goal -d ../../net1/Node"
 ACCOUNT2=$(${gcmd2} account list | awk '{ print $3 }' | head -n 1)
 
+TEAL_APPROVAL_PROG="../../generated-src/greenBondApproval.teal"
+
 # compile stateless contract for bond to get its address
-BOND_STATELESS_TEAL="../bond_stateless.teal"
+BOND_STATELESS_TEAL="../../generated-src/bondEscrow.teal"
 BOND_STATELESS_ADDRESS=$(
   ${gcmd2} clerk compile -n ${BOND_STATELESS_TEAL} \
   | awk '{ print $2 }' \
@@ -21,7 +23,7 @@ BOND_STATELESS_ADDRESS=$(
 echo "Bond Stateless Contract Address = ${BOND_STATELESS_ADDRESS}"
 
 # compile stateless contract for stablecoin to get its address
-STABLECOIN_STATELESS_TEAL="../stablecoin_stateless.teal"
+STABLECOIN_STATELESS_TEAL="../../generated-src/stablecoinEscrow.teal"
 STABLECOIN_STATELESS_ADDRESS=$(
   ${gcmd2} clerk compile -n ${STABLECOIN_STATELESS_TEAL} \
   | awk '{ print $2 }' \
@@ -54,7 +56,7 @@ cat signout-0.tx signout-1.tx signout-2.tx signout-3.tx > signout.tx
 # two options: can either generate context debug file or create your own to use
 ${gcmd2} clerk dryrun -t signout.tx --dryrun-dump -o dr.json
 # debug first transaction. Change index to 1 to debug second transaction
-tealdbg debug ../approval_program.teal -d dr.json --group-index 0
+tealdbg debug ${TEAL_APPROVAL_PROG} -d dr.json --group-index 0
 
 
 # clean up files

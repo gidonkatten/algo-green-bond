@@ -7,11 +7,13 @@ set -x
 set -o pipefail
 export SHELLOPTS
 
-gcmd2="goal -d ../../../net1/Node"
+gcmd2="goal -d ../../net1/Node"
 ACCOUNT2=$(${gcmd2} account list | awk '{ print $3 }' | head -n 1)
 
+TEAL_APPROVAL_PROG="../../generated-src/greenBondApproval.teal"
+
 # compile stateless contract for stablecoin to get its address
-STABLECOIN_STATELESS_TEAL="../stablecoin_stateless.teal"
+STABLECOIN_STATELESS_TEAL="../../generated-src/stablecoinEscrow.teal"
 STABLECOIN_STATELESS_ADDRESS=$(
   ${gcmd2} clerk compile -n ${STABLECOIN_STATELESS_TEAL} \
   | awk '{ print $2 }' \
@@ -23,7 +25,7 @@ STABLECOIN_ID=2
 APP_ID=3
 
 # create transactions
-${gcmd2} app call --app-id ${APP_ID} --app-arg "str:coupon" --from ${ACCOUNT2} --out=unsignedtx0.tx
+${gcmd2} app call --app-id ${APP_ID} --app-arg "str:claim_coupon" --from ${ACCOUNT2} --out=unsignedtx0.tx
 ${gcmd2} clerk send --from=${ACCOUNT2} --to=${STABLECOIN_STATELESS_ADDRESS} --fee=1000 --amount=1000 --out=unsignedtx1.tx
 ${gcmd2} asset send --from=${STABLECOIN_STATELESS_ADDRESS} --to=${ACCOUNT2} --assetid ${STABLECOIN_ID} --fee=1000 --amount=7500000 --out=unsignedtx2.tx
 # combine transactions
@@ -38,11 +40,12 @@ ${gcmd2} clerk sign -i split-1.tx -o signout-1.tx
 ${gcmd2} clerk sign -i split-2.tx -p ${STABLECOIN_STATELESS_TEAL} -o signout-2.tx
 # assemble transaction group
 cat signout-0.tx signout-1.tx signout-2.tx > signout.tx
-# submit
-${gcmd2} clerk rawsend -f signout.tx
+# two options: can either generate context debug file or create your own to use
+${gcmd2} clerk dryrun -t signout.tx --dryrun-dump -o dr.json
+# debug first transaction. Change index to 1 to debug second transaction
+tealdbg debug ${TEAL_APPROVAL_PROG} -d dr.json --group-index 0
 
-# Read local state of contract to see coupon payment installments
-${gcmd2} app read --app-id ${APP_ID} --guess-format --local --from ${ACCOUNT2}
 
 # clean up files
 rm -f *.tx
+rm -f dr.json

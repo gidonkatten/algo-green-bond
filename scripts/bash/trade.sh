@@ -7,14 +7,14 @@ set -x
 set -o pipefail
 export SHELLOPTS
 
-gcmd="goal -d ../../../net1/Primary"
-gcmd2="goal -d ../../../net1/Node"
+gcmd="goal -d ../../net1/Primary"
+gcmd2="goal -d ../../net1/Node"
 
 ACCOUNT=$(${gcmd} account list | awk '{ print $3 }' | head -n 1)
 ACCOUNT2=$(${gcmd2} account list | awk '{ print $3 }' | head -n 1)
 
 # compile stateless contract for bond to get its address
-BOND_STATELESS_TEAL="../bond_stateless.teal"
+BOND_STATELESS_TEAL="../../generated-src/bondEscrow.teal"
 BOND_STATELESS_ADDRESS=$(
   ${gcmd2} clerk compile -n ${BOND_STATELESS_TEAL} |
     awk '{ print $2 }' |
@@ -42,12 +42,12 @@ ${gcmd2} clerk sign -i split-1.tx -p ${BOND_STATELESS_TEAL} -o signout-1.tx
 ${gcmd2} clerk sign -i split-2.tx -o signout-2.tx
 # assemble transaction group
 cat signout-0.tx signout-1.tx signout-2.tx >signout.tx
-# two options: can either generate context debug file or create your own to use
-${gcmd2} clerk dryrun -t signout.tx --dryrun-dump -o dr.json
-# debug first transaction. Change index to 1 to debug second transaction
-tealdbg debug ../approval_program.teal -d dr.json --group-index 0
+# submit
+${gcmd2} clerk rawsend -f signout.tx
 
+# Read local state of contract to see ownership
+${gcmd} app read --app-id ${APP_ID} --guess-format --local --from ${ACCOUNT}
+${gcmd2} app read --app-id ${APP_ID} --guess-format --local --from ${ACCOUNT2}
 
 # clean up files
 rm -f *.tx
-rm -f dr.json

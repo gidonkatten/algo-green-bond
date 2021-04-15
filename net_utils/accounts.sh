@@ -18,7 +18,7 @@ printf "\n\n\n"
 
 # compile stateless contract for bond to get its address
 echo "Bond Contract Account:"
-BOND_STATELESS_TEAL="../src/v2/bond_stateless.teal"
+BOND_STATELESS_TEAL="../generated-src/bondEscrow.teal"
 BOND_STATELESS_ADDRESS=$(
   ${gcmd} clerk compile -n ${BOND_STATELESS_TEAL} \
   | awk '{ print $2 }' \
@@ -32,7 +32,7 @@ printf "\n\n\n"
 
 # compile stateless contract for stablecoin to get its address
 echo "Stablecoin Contract Account:"
-STABLECOIN_STATELESS_TEAL="../src/v2/stablecoin_stateless.teal"
+STABLECOIN_STATELESS_TEAL="../generated-src/stablecoinEscrow.teal"
 STABLECOIN_STATELESS_ADDRESS=$(
   ${gcmd} clerk compile -n ${STABLECOIN_STATELESS_TEAL} \
   | awk '{ print $2 }' \

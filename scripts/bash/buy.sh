@@ -7,11 +7,11 @@ set -x
 set -o pipefail
 export SHELLOPTS
 
-gcmd2="goal -d ../../../net1/Node"
+gcmd2="goal -d ../../net1/Node"
 ACCOUNT2=$(${gcmd2} account list | awk '{ print $3 }' | head -n 1)
 
 # compile stateless contract for bond to get its address
-BOND_STATELESS_TEAL="../bond_stateless.teal"
+BOND_STATELESS_TEAL="../../generated-src/bondEscrow.teal"
 BOND_STATELESS_ADDRESS=$(
   ${gcmd2} clerk compile -n ${BOND_STATELESS_TEAL} \
   | awk '{ print $2 }' \
@@ -20,7 +20,7 @@ BOND_STATELESS_ADDRESS=$(
 echo "Bond Stateless Contract Address = ${BOND_STATELESS_ADDRESS}"
 
 # compile stateless contract for stablecoin to get its address
-STABLECOIN_STATELESS_TEAL="../stablecoin_stateless.teal"
+STABLECOIN_STATELESS_TEAL="../../generated-src/stablecoinEscrow.teal"
 STABLECOIN_STATELESS_ADDRESS=$(
   ${gcmd2} clerk compile -n ${STABLECOIN_STATELESS_TEAL} \
   | awk '{ print $2 }' \

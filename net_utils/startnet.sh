@@ -3,6 +3,9 @@ set -e
 echo "### Creating private network"
 goal network create -n tn50e -t ../networktemplate.json -r ../net1
 echo
+echo "### Updating token"
+echo 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' > ../net1/Primary/algod.token
+echo
 echo "### Starting private network"
 goal network start -r ../net1
 echo

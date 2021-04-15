@@ -12,8 +12,8 @@ WALLET=$1
 # Directory of this bash program
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
-gcmd="goal -d ../../../net1/Primary"
-gcmd2="goal -d ../../../net1/Node"
+gcmd="goal -d ../../net1/Primary"
+gcmd2="goal -d ../../net1/Node"
 
 ACCOUNT=$(${gcmd} account list | awk '{ print $3 }' | head -n 1)
 ACCOUNT2=$(${gcmd2} account list | awk '{ print $3 }' | head -n 1)
@@ -41,8 +41,8 @@ STABLECOIN_ID=$(
 echo "Stablecoin ID = ${STABLECOIN_ID}"
 
 # create app
-TEAL_APPROVAL_PROG="../approval_program.teal"
-TEAL_CLEAR_PROG="../clear_state_program.teal"
+TEAL_APPROVAL_PROG="../../generated-src/greenBondApproval.teal"
+TEAL_CLEAR_PROG="../../generated-src/greenBondClear.teal"
 
 GLOBAL_BYTESLICES=2
 GLOBAL_INTS=8
@@ -54,7 +54,7 @@ BOND_COUPON_PAYMENT_VALUE=2500000 # $2.500000
 BOND_COUPON_INSTALLMENTS=0 # pay BOND_COUPON 0 times evenly distributed throughout BOND_LENGTH
 BOND_PRINCIPAL=100000000 # $100.000000
 SETUP_LENGTH=20 # seconds
-BUY_LENGTH=150 # seconds
+BUY_LENGTH=100 # seconds
 BOND_LENGTH=0 # seconds
 CURRRENT_DATE=$(date '+%s')
 START_BUY_DATE=$(($CURRRENT_DATE + $SETUP_LENGTH))
@@ -84,14 +84,14 @@ echo "App ID = ${APP_ID}"
 
 # Set to the stablecoin contract account address
 # compile stateless contract for stablecoin to get its address
-STABLECOIN_STATELESS_TEAL="../stablecoin_stateless.teal"
+STABLECOIN_STATELESS_TEAL="../../generated-src/stablecoinEscrow.teal"
 STABLECOIN_STATELESS_ADDRESS=$(
   ${gcmd2} clerk compile -n ${STABLECOIN_STATELESS_TEAL} \
   | awk '{ print $2 }' \
   | head -n 1
 )
 echo "Stablecoin Stateless Contract Address = ${STABLECOIN_STATELESS_ADDRESS}"
-${gcmd} app call --app-id ${APP_ID} --app-arg "str:update" --app-arg "addr:${STABLECOIN_STATELESS_ADDRESS}" --from ${ACCOUNT}
+${gcmd} app call --app-id ${APP_ID} --app-arg "str:set_stablecoin_escrow" --app-arg "addr:${STABLECOIN_STATELESS_ADDRESS}" --from ${ACCOUNT}
 
 # Read global state of contract
 ${gcmd} app read --app-id ${APP_ID} --guess-format --global --from ${ACCOUNT}
