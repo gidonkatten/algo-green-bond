@@ -69,6 +69,7 @@ APP_ID=$(
     --global-ints $GLOBAL_INTS \
     --local-byteslices $LOCAL_BYTESLICES \
     --local-ints $LOCAL_INTS \
+    --app-arg "addr:${ACCOUNT}" \
     --app-arg "int:${START_BUY_DATE}" \
     --app-arg "int:${END_BUY_DATE}" \
     --app-arg "int:${MATURITY_DATE}" \

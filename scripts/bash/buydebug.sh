@@ -8,7 +8,10 @@ set -o pipefail
 export SHELLOPTS
 
 
+gcmd="goal -d ../../net1/Primary"
 gcmd2="goal -d ../../net1/Node"
+
+ACCOUNT=$(${gcmd} account list | awk '{ print $3 }' | head -n 1)
 ACCOUNT2=$(${gcmd2} account list | awk '{ print $3 }' | head -n 1)
 
 TEAL_APPROVAL_PROG="../../generated-src/greenBondApproval.teal"
@@ -39,7 +42,7 @@ APP_ID=3
 ${gcmd2} app call --app-id ${APP_ID} --app-arg "str:buy" --from ${ACCOUNT2} --out=unsignedtx0.tx
 ${gcmd2} asset send --from=${BOND_STATELESS_ADDRESS} --to=${ACCOUNT2} --assetid ${BOND_ID} --clawback ${BOND_STATELESS_ADDRESS} --fee=1000 --amount=3 --out=unsignedtx1.tx
 ${gcmd2} clerk send --from=${ACCOUNT2} --to=${BOND_STATELESS_ADDRESS} --fee=1000 --amount=1000 --out=unsignedtx2.tx
-${gcmd2} asset send --from=${ACCOUNT2} --to=${STABLECOIN_STATELESS_ADDRESS} --assetid ${STABLECOIN_ID} --fee=1000 --amount=150000000 --out=unsignedtx3.tx
+${gcmd2} asset send --from=${ACCOUNT2} --to=${ACCOUNT} --assetid ${STABLECOIN_ID} --fee=1000 --amount=150000000 --out=unsignedtx3.tx
 # combine transactions
 cat unsignedtx0.tx unsignedtx1.tx unsignedtx2.tx unsignedtx3.tx > combinedtransactions.tx
 # group transactions

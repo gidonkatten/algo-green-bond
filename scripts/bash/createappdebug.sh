@@ -13,8 +13,8 @@ WALLET=$1
 # Directory of this bash program
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
-gcmd="goal -d ../../../net1/Primary"
-gcmd2="goal -d ../../../net1/Node"
+gcmd="goal -d ../../net1/Primary"
+gcmd2="goal -d ../../net1/Node"
 
 ACCOUNT=$(${gcmd} account list|awk '{ print $3 }'|head -n 1)
 ACCOUNT2=$(${gcmd2} account list|awk '{ print $3 }'|head -n 1)
@@ -32,8 +32,8 @@ BOND_ID=$(
 echo "Bond ID = ${BOND_ID}"
 
 # create app
-TEAL_APPROVAL_PROG="../approval_program.teal"
-TEAL_CLEAR_PROG="../clear_state_program.teal"
+TEAL_APPROVAL_PROG="../../generated-src/greenBondApproval.teal"
+TEAL_CLEAR_PROG="../../generated-src/greenBondClear.teal"
 
 GLOBAL_BYTESLICES=2
 GLOBAL_INTS=8
@@ -59,6 +59,7 @@ ${gcmd} app create --creator ${ACCOUNT} \
   --global-ints $GLOBAL_INTS \
   --local-byteslices $LOCAL_BYTESLICES \
   --local-ints $LOCAL_INTS \
+  --app-arg "addr:${ACCOUNT}" \
   --app-arg "int:${START_BUY_DATE}" \
   --app-arg "int:${END_BUY_DATE}" \
   --app-arg "int:${MATURITY_DATE}" \
@@ -70,7 +71,7 @@ ${gcmd} app create --creator ${ACCOUNT} \
   --dryrun-dump -o dump1.dr
 
 # debug
-tealdbg debug ../approval_program.teal -d dump1.dr
+tealdbg debug ${TEAL_APPROVAL_PROG} -d dump1.dr
 
 # clean up files
 rm -f dump1.dr

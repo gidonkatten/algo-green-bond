@@ -40,4 +40,4 @@ if __name__ == "__main__":
         "APP_ID": 3
     }
 
-    print(compileTeal(contract(params), Mode.Signature, version=2))
+    print(compileTeal(contract(params), Mode.Signature, version=3))

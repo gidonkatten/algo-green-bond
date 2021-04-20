@@ -4,16 +4,16 @@ from pyteal import *
 def contract(args):
     # Verify 8 args passed and store them
     on_creation = Seq([
-        App.globalPut(Bytes("Creator"), Txn.sender()),
-        Assert(Txn.application_args.length() == Int(8)),
-        App.globalPut(Bytes("StartBuyDate"), Btoi(Txn.application_args[0])),
-        App.globalPut(Bytes("EndBuyDate"), Btoi(Txn.application_args[1])),
-        App.globalPut(Bytes("MaturityDate"), Btoi(Txn.application_args[2])),
-        App.globalPut(Bytes("BondID"), Btoi(Txn.application_args[3])),
-        App.globalPut(Bytes("BondCost"), Btoi(Txn.application_args[4])),
-        App.globalPut(Bytes("BondCouponPaymentValue"), Btoi(Txn.application_args[5])),
-        App.globalPut(Bytes("BondCouponInstallments"), Btoi(Txn.application_args[6])),
-        App.globalPut(Bytes("BondPrincipal"), Btoi(Txn.application_args[7])),
+        Assert(Txn.application_args.length() == Int(9)),
+        App.globalPut(Bytes("IssuerAddr"), Txn.application_args[0]),
+        App.globalPut(Bytes("StartBuyDate"), Btoi(Txn.application_args[1])),
+        App.globalPut(Bytes("EndBuyDate"), Btoi(Txn.application_args[2])),
+        App.globalPut(Bytes("MaturityDate"), Btoi(Txn.application_args[3])),
+        App.globalPut(Bytes("BondID"), Btoi(Txn.application_args[4])),
+        App.globalPut(Bytes("BondCost"), Btoi(Txn.application_args[5])),
+        App.globalPut(Bytes("BondCouponPaymentValue"), Btoi(Txn.application_args[6])),
+        App.globalPut(Bytes("BondCouponInstallments"), Btoi(Txn.application_args[7])),
+        App.globalPut(Bytes("BondPrincipal"), Btoi(Txn.application_args[8])),
         Int(1)
     ])
 
@@ -49,11 +49,11 @@ def contract(args):
         Gtxn[2].receiver() == Gtxn[1].sender(),
         Gtxn[2].amount() >= Gtxn[1].fee(),
     )
-    # 3. transfer of USDC from buyer to stablecoin contract account (NoOfBonds * BondCost)
+    # 3. transfer of USDC from buyer to issuer account (NoOfBonds * BondCost)
     buy_stablecoin_transfer = And(
         Gtxn[3].type_enum() == TxnType.AssetTransfer,
         Gtxn[3].sender() == Txn.sender(),
-        Gtxn[3].asset_receiver() == App.globalGet(Bytes("StablecoinEscrowAddr")),  # TODO: Update receiver addr
+        Gtxn[3].asset_receiver() == App.globalGet(Bytes("IssuerAddr")),
         Gtxn[3].xfer_asset() == Int(args["STABLECOIN_ID"]),
         Gtxn[3].asset_amount() == Mul(Gtxn[1].asset_amount(), App.globalGet(Bytes("BondCost")))
     )
@@ -265,4 +265,4 @@ if __name__ == "__main__":
     params = {
         "STABLECOIN_ID": 2
     }
-    print(compileTeal(contract(params), Mode.Application))  # For Stateful contract, use Mode.Application
+    print(compileTeal(contract(params), Mode.Application, version=3))
