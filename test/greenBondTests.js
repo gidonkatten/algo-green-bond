@@ -28,15 +28,14 @@ const buyerAddr = "FCRSMPKRY5JPS4IQ2M7P4JRRIJSHRXL5S3NFTGHYP5GQD2XERNYUWEXG54"
  * functions in runtime, and set the state directly (to avoid calling the smart contract)
  * We only call the smart contract during the actual 'claim' tx call, and verify state later.
  */
-describe('Crowdfunding Tests - Happy Paths', function () {
-  const master = new AccountStore(1000e6, { addr: masterAddr, sk: new Uint8Array(0) });
+describe('Green Bond Tests', function () {
+  let master = new AccountStore(1000e6, { addr: masterAddr, sk: new Uint8Array(0) });
   let issuer = new AccountStore(MIN_BALANCE, { addr: issuerAddr, sk: new Uint8Array(0) });
   let buyer = new AccountStore(MIN_BALANCE, { addr: buyerAddr, sk: new Uint8Array(0) });
   let bondEscrow, bondEscrowLsig; // initialized later
   let stablecoinEscrow, stablecoinEscrowLsig; // initialized later
 
   let runtime;
-  let creationFlags;
   let applicationId;
   let bondId;
   let bondDef;
@@ -61,6 +60,7 @@ describe('Crowdfunding Tests - Happy Paths', function () {
 
   // fetch latest account state
   function syncAccounts () {
+    master = runtime.getAccount(master.address);
     issuer = runtime.getAccount(issuer.address);
     buyer = runtime.getAccount(buyer.address);
     if (bondEscrow) bondEscrow = runtime.getAccount(bondEscrow.address);
@@ -72,8 +72,9 @@ describe('Crowdfunding Tests - Happy Paths', function () {
    */
   this.beforeEach(() => {
     // refresh accounts + initialize runtime
-    issuer = new AccountStore(MIN_BALANCE);
-    buyer = new AccountStore(MIN_BALANCE);
+    master = new AccountStore(1000e6, { addr: masterAddr, sk: new Uint8Array(0) });
+    issuer = new AccountStore(MIN_BALANCE, { addr: issuerAddr, sk: new Uint8Array(0) });
+    buyer = new AccountStore(MIN_BALANCE, { addr: buyerAddr, sk: new Uint8Array(0) });
     runtime = new Runtime([master, issuer, buyer]);
 
     // setup and sync bond escrow account
@@ -154,10 +155,13 @@ describe('Crowdfunding Tests - Happy Paths', function () {
     stablecoinDef = runtime.getAssetDef(stablecoinId);
     assert.equal(stablecoinId, 2);
 
+    runtime.optIntoASA(stablecoinId, issuer.address, {})
     runtime.optIntoASA(stablecoinId, buyer.address, {})
     runtime.optIntoASA(stablecoinId, stablecoinEscrowAddress, {})
+    let issuerStablecoinHolding = runtime.getAssetHolding(stablecoinId, issuer.address);
     let buyerStablecoinHolding = runtime.getAssetHolding(stablecoinId, buyer.address);
     let stablecoinEscrowHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrowAddress);
+    assert.isDefined(issuerStablecoinHolding);
     assert.isDefined(buyerStablecoinHolding);
     assert.isDefined(stablecoinEscrowHolding);
   });
@@ -178,8 +182,8 @@ describe('Crowdfunding Tests - Happy Paths', function () {
       payFlags: {}
     });
 
-    const afterHolding = runtime.getAssetHolding(stablecoinId, buyer.address);
-    assert.equal(initialHolding.amount + amount, afterHolding.amount);
+    const afterHolding = runtime.getAssetHolding(stablecoinId, toAccountAddr);
+    assert.equal(initialHolding.amount + BigInt(amount), afterHolding.amount);
   }
 
   /**
@@ -188,8 +192,16 @@ describe('Crowdfunding Tests - Happy Paths', function () {
   function createApp() {
     runtime.appCounter = 2;
 
+    creationFlags = {
+      sender: master.account,
+      localInts: 2,
+      localBytes: 0,
+      globalInts: 8,
+      globalBytes: 2
+    };
+
     const creationArgs = [
-      addressToPk(issuerAddr),
+      addressToPk(issuer.address),
       uint64ToBigEndian(BigInt(START_BUY_DATE)),
       uint64ToBigEndian(BigInt(END_BUY_DATE)),
       uint64ToBigEndian(BigInt(BOND_LENGTH)),
@@ -224,77 +236,24 @@ describe('Crowdfunding Tests - Happy Paths', function () {
     })
   }
 
-  it('should create bond stateful application', () => {
-    createApp();
+  describe('Creation', function () {
+    it('should create bond stateful application', () => {
+      createApp();
 
-    // assert.deepEqual(getGlobal('Creator'), master.address); // TODO: Add when switch to version 3
-    assert.deepEqual(getGlobal('IssuerAddr'), addressToPk(issuerAddr));
-    assert.deepEqual(getGlobal('StartBuyDate'), BigInt(START_BUY_DATE));
-    assert.deepEqual(getGlobal('EndBuyDate'), BigInt(END_BUY_DATE));
-    assert.deepEqual(getGlobal('BondLength'), BigInt(BOND_LENGTH));
-    assert.deepEqual(getGlobal('BondID'), BigInt(bondId));
-    assert.deepEqual(getGlobal('BondCost'), BigInt(BOND_COST));
-    assert.deepEqual(getGlobal('BondCouponPaymentValue'), BigInt(BOND_COUPON_PAYMENT_VALUE));
-    assert.deepEqual(getGlobal('BondPrincipal'), BigInt(BOND_PRINCIPAL));
-    assert.deepEqual(getGlobal('MaturityDate'), BigInt(END_BUY_DATE + SIX_MONTH_PERIOD * BOND_LENGTH));
+      // assert.deepEqual(getGlobal('Creator'), master.address); // TODO: Add when switch to version 3
+      assert.deepEqual(getGlobal('IssuerAddr'), addressToPk(issuer.address));
+      assert.deepEqual(getGlobal('StartBuyDate'), BigInt(START_BUY_DATE));
+      assert.deepEqual(getGlobal('EndBuyDate'), BigInt(END_BUY_DATE));
+      assert.deepEqual(getGlobal('BondLength'), BigInt(BOND_LENGTH));
+      assert.deepEqual(getGlobal('BondID'), BigInt(bondId));
+      assert.deepEqual(getGlobal('BondCost'), BigInt(BOND_COST));
+      assert.deepEqual(getGlobal('BondCouponPaymentValue'), BigInt(BOND_COUPON_PAYMENT_VALUE));
+      assert.deepEqual(getGlobal('BondPrincipal'), BigInt(BOND_PRINCIPAL));
+      assert.deepEqual(getGlobal('MaturityDate'), BigInt(END_BUY_DATE + SIX_MONTH_PERIOD * BOND_LENGTH));
+    });
   });
 
-  it('creator can set stablecoin escrow address', () => {
-    createApp();
-    setStablecoinEscrowInApp();
-
-    const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
-    assert.deepEqual(getGlobal('StablecoinEscrowAddr'), addressToPk(stablecoinEscrowAddress));
-  });
-
-  // TODO: Will pass when TEAL3
-  it('non creator cannot set stablecoin escrow address', () => {
-    createApp();
-
-    assert.throws(() => {
-      runtime.executeTx({
-        type: types.TransactionType.CallNoOpSSC,
-        sign: types.SignType.SecretKey,
-        fromAccount: buyer.account,
-        appId: applicationId,
-        payFlags: {},
-        appArgs: [stringToBytes("set_stablecoin_escrow"), addressToPk(buyerAddr)]
-      })
-    }, 'RUNTIME_ERR1009: TEAL runtime encountered err opcode');
-  });
-
-  it('creator cannot set stablecoin escrow address when START_BUY_DATE and later', () => {
-    createApp();
-
-    // Set time to START_BUY_DATE
-    runtime.setRoundAndTimestamp(2, START_BUY_DATE)
-
-    assert.throws(() => {
-      runtime.executeTx({
-        type: types.TransactionType.CallNoOpSSC,
-        sign: types.SignType.SecretKey,
-        fromAccount: master.account,
-        appId: applicationId,
-        payFlags: {},
-        appArgs: [stringToBytes("set_stablecoin_escrow"), addressToPk(masterAddr)]
-      })
-    }, 'RUNTIME_ERR1009: TEAL runtime encountered err opcode');
-
-    // Set time to START_BUY_DATE + 1
-    runtime.setRoundAndTimestamp(3, START_BUY_DATE + 1)
-
-    assert.throws(() => {
-      runtime.executeTx({
-        type: types.TransactionType.CallNoOpSSC,
-        sign: types.SignType.SecretKey,
-        fromAccount: master.account,
-        appId: applicationId,
-        payFlags: {},
-        appArgs: [stringToBytes("set_stablecoin_escrow"), addressToPk(masterAddr)]
-      })
-    }, 'RUNTIME_ERR1009: TEAL runtime encountered err opcode');
-  });
-
+  describe('Opt-in', function () {
     it('should be able to opt-in to app', () => {
       createApp();
       setStablecoinEscrowInApp();
@@ -305,51 +264,136 @@ describe('Crowdfunding Tests - Happy Paths', function () {
       // verify opt-in
       assert.isDefined(buyer.getAppFromLocal(applicationId));
     });
+  });
 
-  // it('should be able to donate funds to escrow before end date', () => {
-  //   setupAppAndEscrow();
-  //   runtime.setRoundAndTimestamp(2, 5); // StartTs=1, EndTs=10
-  //
-  //   // update global storage to add escrow address
-  //   const escrowPk = addressToPk(escrow.address);
-  //   runtime.getAccount(creator.address).setGlobalState(applicationId, 'Escrow', escrowPk);
-  //   syncAccounts();
-  //
-  //   // opt-in to app
-  //   creator.optInToApp(applicationId, runtime.getApp(applicationId));
-  //   donor.optInToApp(applicationId, runtime.getApp(applicationId));
-  //   syncAccounts();
-  //
-  //   // Atomic Transaction (Stateful Smart Contract call + Payment Transaction)
-  //   const donorBal = donor.balance();
-  //   const escrowBal = escrow.balance();
-  //   const donateTxGroup = [
-  //     {
-  //       type: types.TransactionType.CallNoOpSSC,
-  //       sign: types.SignType.SecretKey,
-  //       fromAccount: donor.account,
-  //       appId: applicationId,
-  //       payFlags: { totalFee: 1000 },
-  //       appArgs: [stringToBytes('donate')]
-  //     },
-  //     {
-  //       type: types.TransactionType.TransferAlgo,
-  //       sign: types.SignType.SecretKey,
-  //       fromAccount: donor.account,
-  //       toAccountAddr: escrow.address,
-  //       amountMicroAlgos: 7000000,
-  //       payFlags: { totalFee: 1000 }
-  //     }
-  //   ];
-  //
-  //   runtime.executeTx(donateTxGroup);
-  //
-  //   syncAccounts();
-  //   assert.equal(escrow.balance(), escrowBal + BigInt(7e6)); // verify donation of 7000000
-  //   assert.equal(donor.balance(), donorBal - BigInt(7e6) - 2000n); // 2000 is also deducted because of tx fee
-  // });
-  //
-  // it('Receiver should be able to withdraw funds if Goal is met', () => {
+  describe('set_stablecoin_escrow', function () {
+    it('creator can set stablecoin escrow address', () => {
+      createApp();
+      setStablecoinEscrowInApp();
+
+      const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
+      assert.deepEqual(getGlobal('StablecoinEscrowAddr'), addressToPk(stablecoinEscrowAddress));
+    });
+
+    // TODO: Will pass when TEAL3
+    // it('non creator cannot set stablecoin escrow address', () => {
+    //   createApp();
+    //
+    //   assert.throws(() => {
+    //     runtime.executeTx({
+    //       type: types.TransactionType.CallNoOpSSC,
+    //       sign: types.SignType.SecretKey,
+    //       fromAccount: buyer.account,
+    //       appId: applicationId,
+    //       payFlags: {},
+    //       appArgs: [stringToBytes("set_stablecoin_escrow"), addressToPk(buyer.address)]
+    //     })
+    //   }, 'RUNTIME_ERR1009: TEAL runtime encountered err opcode');
+    // });
+
+    it('creator cannot set stablecoin escrow address when START_BUY_DATE and later', () => {
+      createApp();
+
+      // Set time to START_BUY_DATE
+      runtime.setRoundAndTimestamp(2, START_BUY_DATE)
+
+      assert.throws(() => {
+        runtime.executeTx({
+          type: types.TransactionType.CallNoOpSSC,
+          sign: types.SignType.SecretKey,
+          fromAccount: master.account,
+          appId: applicationId,
+          payFlags: {},
+          appArgs: [stringToBytes("set_stablecoin_escrow"), addressToPk(master.address)]
+        })
+      }, 'RUNTIME_ERR1009: TEAL runtime encountered err opcode');
+
+      // Set time to START_BUY_DATE + 1
+      runtime.setRoundAndTimestamp(3, START_BUY_DATE + 1)
+
+      assert.throws(() => {
+        runtime.executeTx({
+          type: types.TransactionType.CallNoOpSSC,
+          sign: types.SignType.SecretKey,
+          fromAccount: master.account,
+          appId: applicationId,
+          payFlags: {},
+          appArgs: [stringToBytes("set_stablecoin_escrow"), addressToPk(master.address)]
+        })
+      }, 'RUNTIME_ERR1009: TEAL runtime encountered err opcode');
+    });
+  });
+
+  describe('buy', function () {
+
+    it('should be able to buy bond after StartBuyDate and before BeforeEndDate', () => {
+      // setup
+      createApp();
+      setStablecoinEscrowInApp();
+      runtime.optInToApp(buyer.address, applicationId, {}, {});
+      runtime.setRoundAndTimestamp(3, START_BUY_DATE);
+
+      const bondEscrowAddress = bondEscrowLsig.address();
+      const NUM_BONDS_BUYING = 3;
+      fundStablecoin(BOND_COST * NUM_BONDS_BUYING, buyer.address);
+
+      // Atomic Transaction
+      const donateTxGroup = [
+        {
+          type: types.TransactionType.CallNoOpSSC,
+          sign: types.SignType.SecretKey,
+          fromAccount: buyer.account,
+          appId: applicationId,
+          payFlags: {},
+          appArgs: [stringToBytes('buy')]
+        },
+        {
+          type: types.TransactionType.RevokeAsset,
+          sign: types.SignType.LogicSignature,
+          fromAccount: bondEscrow.account,
+          lsig: bondEscrowLsig,
+          revocationTarget: bondEscrowAddress,
+          recipient: buyer.address,
+          amount: NUM_BONDS_BUYING,
+          assetID: bondId,
+          payFlags: { totalFee: 1000 }
+        },
+        {
+          type: types.TransactionType.TransferAlgo,
+          sign: types.SignType.SecretKey,
+          fromAccount: buyer.account,
+          toAccountAddr: bondEscrowAddress,
+          amountMicroAlgos: 1000,
+          payFlags: { totalFee: 1000 }
+        },
+        {
+          type: types.TransactionType.TransferAsset,
+          sign: types.SignType.SecretKey,
+          fromAccount: buyer.account,
+          toAccountAddr: issuer.address,
+          amount: NUM_BONDS_BUYING * BOND_COST,
+          assetID: stablecoinId,
+          payFlags: { totalFee: 1000 }
+        }
+      ];
+
+      runtime.executeTx(donateTxGroup);
+
+      const bondsHolding = runtime.getAssetHolding(bondId, buyer.address);
+      assert.equal(bondsHolding.amount, NUM_BONDS_BUYING);
+    });
+  });
+
+  describe('trade', function () {
+  });
+
+  describe('claim_coupon', function () {
+  });
+
+  describe('claim_principal', function () {
+  });
+
+    // it('Receiver should be able to withdraw funds if Goal is met', () => {
   //   setupAppAndEscrow();
   //   // fund end date should be passed
   //   runtime.setRoundAndTimestamp(2, 15); // StartTs=1, EndTs=10
