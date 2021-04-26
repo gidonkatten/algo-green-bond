@@ -106,11 +106,16 @@ def contract(args):
         Gtxn[2].amount() >= Gtxn[1].fee(),
     )
     # 3,4,... Optional (e.g for payment when transferring bonds)
+    in_trade_window = And(
+        Global.latest_timestamp() > App.globalGet(Bytes("EndBuyDate")),
+        Global.latest_timestamp() < App.globalGet(Bytes("MaturityDate")),
+    )
     # Combine
     trade_verify = And(
         Global.group_size() >= Int(3),
         trade_bond_transfer,
         trade_fee_transfer,
+        in_trade_window
     )
     # verify account gaining bond has same number of coupon payments if they already own some bonds
     has_same_num_installments = If(

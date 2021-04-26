@@ -18,7 +18,8 @@ const SIX_MONTH_PERIOD = 15768000;
 
 const masterAddr = "A6BDLTPR4IEIZG4CCUGEXVMZSXTFO7RWNSOWHBWZL3CX2CLWTKW5FF4SE4";
 const issuerAddr = "EMO2JEPSRWNAJGR62S75GQ4ICOKVNI46AYRERZPJOWYUFEYEZJ6BU5GMXY";
-const buyerAddr = "FCRSMPKRY5JPS4IQ2M7P4JRRIJSHRXL5S3NFTGHYP5GQD2XERNYUWEXG54"
+const buyerAddr = "FCRSMPKRY5JPS4IQ2M7P4JRRIJSHRXL5S3NFTGHYP5GQD2XERNYUWEXG54";
+const traderAddr = "TWYS3Y6SJOUW6WIEIXTBOII7523QI4MUO3TSYDS7SCG4TIGGC2S6V6TJP4";
 
 /**
  * NOTE: The following unit tests test the happy flow of the bond application.
@@ -32,11 +33,13 @@ describe('Green Bond Tests', function () {
   let master = new AccountStore(1000e6, { addr: masterAddr, sk: new Uint8Array(0) });
   let issuer = new AccountStore(MIN_BALANCE, { addr: issuerAddr, sk: new Uint8Array(0) });
   let buyer = new AccountStore(MIN_BALANCE, { addr: buyerAddr, sk: new Uint8Array(0) });
+  let trader = new AccountStore(MIN_BALANCE, { addr: traderAddr, sk: new Uint8Array(0) });
   let bondEscrow, bondEscrowLsig; // initialized later
   let stablecoinEscrow, stablecoinEscrowLsig; // initialized later
 
   let runtime;
   let applicationId;
+  let creationFlags;
   let bondId;
   let bondDef;
   let stablecoinId;
@@ -44,8 +47,152 @@ describe('Green Bond Tests', function () {
   const approvalProgram = getProgram('greenBondApproval.py');
   const clearProgram = getProgram('greenBondClear.py');
 
+  const getGlobal = (key) => runtime.getGlobalState(applicationId, key);
+  const getLocal = (addr, key) => runtime.getLocalState(applicationId, addr, key);
+
+  // fetch latest account state
+  function syncAccounts () {
+    master = runtime.getAccount(master.address);
+    issuer = runtime.getAccount(issuer.address);
+    buyer = runtime.getAccount(buyer.address);
+    trader = runtime.getAccount(trader.address);
+    if (bondEscrow) bondEscrow = runtime.getAccount(bondEscrow.address);
+    if (stablecoinEscrow) stablecoinEscrow = runtime.getAccount(stablecoinEscrow.address);
+  }
+
+
+  /**
+   * This function funds given address with stablecoin
+   */
+  function fundStablecoin(amount, toAccountAddr) {
+    const initialHolding = runtime.getAssetHolding(stablecoinId, toAccountAddr);
+
+    runtime.executeTx({
+      type: types.TransactionType.TransferAsset,
+      sign: types.SignType.SecretKey,
+      fromAccount: master.account,
+      toAccountAddr,
+      amount: amount,
+      assetID: stablecoinId,
+      payFlags: {}
+    });
+
+    const afterHolding = runtime.getAssetHolding(stablecoinId, toAccountAddr);
+    assert.equal(initialHolding.amount + BigInt(amount), afterHolding.amount);
+  }
+
+  /**
+   * This function creates app and sets app id to 3
+   */
+  function createApp(params) {
+    const args = {
+      startBuyDate: START_BUY_DATE,
+      endBuyDate: END_BUY_DATE,
+      bondLength: BOND_LENGTH,
+      bondId,
+      bondCost: BOND_COST,
+      bondCouponPaymentValue: BOND_COUPON_PAYMENT_VALUE,
+      bondPrincipal: BOND_PRINCIPAL,
+      ...params
+    }
+
+    runtime.appCounter = 2;
+
+    creationFlags = {
+      sender: master.account,
+      localInts: 2,
+      localBytes: 0,
+      globalInts: 8,
+      globalBytes: 2
+    };
+
+    const creationArgs = [
+      addressToPk(issuer.address),
+      uint64ToBigEndian(BigInt(args.startBuyDate)),
+      uint64ToBigEndian(BigInt(args.endBuyDate)),
+      uint64ToBigEndian(BigInt(args.bondLength)),
+      uint64ToBigEndian(BigInt(args.bondId)),
+      uint64ToBigEndian(BigInt(args.bondCost)),
+      uint64ToBigEndian(BigInt(args.bondCouponPaymentValue)),
+      uint64ToBigEndian(BigInt(args.bondPrincipal))
+    ];
+
+    // create application
+    applicationId = runtime.addApp(
+      { ...creationFlags, appArgs: creationArgs },
+      {},
+      approvalProgram,
+      clearProgram
+    );
+
+    assert.equal(applicationId, 3);
+  }
+
+  /**
+   * This function sets stablecoin escrow address in application global state
+   */
+  function setStablecoinEscrowInApp() {
+    const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
+    runtime.executeTx({
+      type: types.TransactionType.CallNoOpSSC,
+      sign: types.SignType.SecretKey,
+      fromAccount: master.account,
+      appId: applicationId,
+      payFlags: {},
+      appArgs: [stringToBytes("set_stablecoin_escrow"), addressToPk(stablecoinEscrowAddress)]
+    })
+  }
+  /**
+   * This function buys bonds
+   */
+  function buyBond(noOfBonds, bondCost) {
+    const bondEscrowAddress = bondEscrowLsig.address();
+
+    // Atomic Transaction
+    const donateTxGroup = [
+      {
+        type: types.TransactionType.CallNoOpSSC,
+        sign: types.SignType.SecretKey,
+        fromAccount: buyer.account,
+        appId: applicationId,
+        payFlags: {},
+        appArgs: [stringToBytes('buy')]
+      },
+      {
+        type: types.TransactionType.RevokeAsset,
+        sign: types.SignType.LogicSignature,
+        fromAccount: bondEscrow.account,
+        lsig: bondEscrowLsig,
+        revocationTarget: bondEscrowAddress,
+        recipient: buyer.address,
+        amount: noOfBonds,
+        assetID: bondId,
+        payFlags: { totalFee: 1000 }
+      },
+      {
+        type: types.TransactionType.TransferAlgo,
+        sign: types.SignType.SecretKey,
+        fromAccount: buyer.account,
+        toAccountAddr: bondEscrowAddress,
+        amountMicroAlgos: 1000,
+        payFlags: { totalFee: 1000 }
+      },
+      {
+        type: types.TransactionType.TransferAsset,
+        sign: types.SignType.SecretKey,
+        fromAccount: buyer.account,
+        toAccountAddr: issuer.address,
+        amount: noOfBonds * bondCost,
+        assetID: stablecoinId,
+        payFlags: { totalFee: 1000 }
+      }
+    ];
+
+    runtime.executeTx(donateTxGroup);
+  }
+
   this.beforeAll(async function () {
-    runtime = new Runtime([master, issuer, buyer]);
+    runtime = new Runtime([master, issuer, buyer, trader]);
 
     creationFlags = {
       sender: master.account,
@@ -56,17 +203,6 @@ describe('Green Bond Tests', function () {
     };
   });
 
-  const getGlobal = (key) => runtime.getGlobalState(applicationId, key);
-
-  // fetch latest account state
-  function syncAccounts () {
-    master = runtime.getAccount(master.address);
-    issuer = runtime.getAccount(issuer.address);
-    buyer = runtime.getAccount(buyer.address);
-    if (bondEscrow) bondEscrow = runtime.getAccount(bondEscrow.address);
-    if (stablecoinEscrow) stablecoinEscrow = runtime.getAccount(stablecoinEscrow.address);
-  }
-
   /**
    * This creates bond, stablecoin and escrow accounts
    */
@@ -75,7 +211,8 @@ describe('Green Bond Tests', function () {
     master = new AccountStore(1000e6, { addr: masterAddr, sk: new Uint8Array(0) });
     issuer = new AccountStore(MIN_BALANCE, { addr: issuerAddr, sk: new Uint8Array(0) });
     buyer = new AccountStore(MIN_BALANCE, { addr: buyerAddr, sk: new Uint8Array(0) });
-    runtime = new Runtime([master, issuer, buyer]);
+    trader = new AccountStore(MIN_BALANCE, { addr: traderAddr, sk: new Uint8Array(0) });
+    runtime = new Runtime([master, issuer, buyer, trader]);
 
     // setup and sync bond escrow account
     const bondEscrowProg = getProgram('bondEscrow.py');
@@ -166,79 +303,9 @@ describe('Green Bond Tests', function () {
     assert.isDefined(stablecoinEscrowHolding);
   });
 
-  /**
-   * This function funds given address with stablecoin
-   */
-  function fundStablecoin(amount, toAccountAddr) {
-    const initialHolding = runtime.getAssetHolding(stablecoinId, toAccountAddr);
-
-    runtime.executeTx({
-      type: types.TransactionType.TransferAsset,
-      sign: types.SignType.SecretKey,
-      fromAccount: master.account,
-      toAccountAddr,
-      amount: amount,
-      assetID: stablecoinId,
-      payFlags: {}
-    });
-
-    const afterHolding = runtime.getAssetHolding(stablecoinId, toAccountAddr);
-    assert.equal(initialHolding.amount + BigInt(amount), afterHolding.amount);
-  }
-
-  /**
-   * This function creates app and sets app id to 3
-   */
-  function createApp() {
-    runtime.appCounter = 2;
-
-    creationFlags = {
-      sender: master.account,
-      localInts: 2,
-      localBytes: 0,
-      globalInts: 8,
-      globalBytes: 2
-    };
-
-    const creationArgs = [
-      addressToPk(issuer.address),
-      uint64ToBigEndian(BigInt(START_BUY_DATE)),
-      uint64ToBigEndian(BigInt(END_BUY_DATE)),
-      uint64ToBigEndian(BigInt(BOND_LENGTH)),
-      uint64ToBigEndian(BigInt(bondId)),
-      uint64ToBigEndian(BigInt(BOND_COST)),
-      uint64ToBigEndian(BigInt(BOND_COUPON_PAYMENT_VALUE)),
-      uint64ToBigEndian(BigInt(BOND_PRINCIPAL))
-    ];
-
-    // create application
-    applicationId = runtime.addApp(
-      { ...creationFlags, appArgs: creationArgs },
-      {},
-      approvalProgram,
-      clearProgram
-    );
-
-    assert.equal(applicationId, 3);
-  }
-  /**
-   * This function sets stablecoin escrow address in application global state
-   */
-  function setStablecoinEscrowInApp() {
-    const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
-    runtime.executeTx({
-      type: types.TransactionType.CallNoOpSSC,
-      sign: types.SignType.SecretKey,
-      fromAccount: master.account,
-      appId: applicationId,
-      payFlags: {},
-      appArgs: [stringToBytes("set_stablecoin_escrow"), addressToPk(stablecoinEscrowAddress)]
-    })
-  }
-
   describe('Creation', function () {
     it('should create bond stateful application', () => {
-      createApp();
+      createApp({});
 
       // assert.deepEqual(getGlobal('Creator'), master.address); // TODO: Add when switch to version 3
       assert.deepEqual(getGlobal('IssuerAddr'), addressToPk(issuer.address));
@@ -255,7 +322,7 @@ describe('Green Bond Tests', function () {
 
   describe('Opt-in', function () {
     it('should be able to opt-in to app', () => {
-      createApp();
+      createApp({});
       setStablecoinEscrowInApp();
 
       runtime.optInToApp(buyer.address, applicationId, {}, {});
@@ -268,7 +335,7 @@ describe('Green Bond Tests', function () {
 
   describe('set_stablecoin_escrow', function () {
     it('creator can set stablecoin escrow address', () => {
-      createApp();
+      createApp({});
       setStablecoinEscrowInApp();
 
       const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
@@ -277,7 +344,7 @@ describe('Green Bond Tests', function () {
 
     // TODO: Will pass when TEAL3
     // it('non creator cannot set stablecoin escrow address', () => {
-    //   createApp();
+    //   createApp({});
     //
     //   assert.throws(() => {
     //     runtime.executeTx({
@@ -292,7 +359,7 @@ describe('Green Bond Tests', function () {
     // });
 
     it('creator cannot set stablecoin escrow address when START_BUY_DATE and later', () => {
-      createApp();
+      createApp({});
 
       // Set time to START_BUY_DATE
       runtime.setRoundAndTimestamp(2, START_BUY_DATE)
@@ -326,16 +393,54 @@ describe('Green Bond Tests', function () {
 
   describe('buy', function () {
 
-    it('should be able to buy bond after StartBuyDate and before BeforeEndDate', () => {
+    it('should be able to buy bond after StartBuyDate and before EndBuyDate', () => {
       // setup
-      createApp();
+      createApp({});
       setStablecoinEscrowInApp();
       runtime.optInToApp(buyer.address, applicationId, {}, {});
       runtime.setRoundAndTimestamp(3, START_BUY_DATE);
 
-      const bondEscrowAddress = bondEscrowLsig.address();
       const NUM_BONDS_BUYING = 3;
       fundStablecoin(BOND_COST * NUM_BONDS_BUYING, buyer.address);
+      const initialStablecoinHolding = runtime.getAssetHolding(stablecoinId, buyer.address);
+
+      buyBond(NUM_BONDS_BUYING, BOND_COST);
+
+      // verify bought
+      const bondsHolding = runtime.getAssetHolding(bondId, buyer.address);
+      const afterStablecoinHolding = runtime.getAssetHolding(stablecoinId, buyer.address);
+      const localBondsOwned = getLocal(buyer.address, stringToBytes('NoOfBondsOwned'));
+
+      assert.equal(bondsHolding.amount, NUM_BONDS_BUYING);
+      assert.equal(afterStablecoinHolding.amount,
+        initialStablecoinHolding.amount - BigInt(BOND_COST * NUM_BONDS_BUYING));
+      assert.equal(localBondsOwned, NUM_BONDS_BUYING);
+    });
+  });
+
+  describe('trade', function () {
+
+    it('should be able to trade bond after EndBuyDate and before MaturityDate', () => {
+      // setup
+      createApp({});
+      setStablecoinEscrowInApp();
+      runtime.optInToApp(buyer.address, applicationId, {}, {});
+      runtime.setRoundAndTimestamp(3, START_BUY_DATE);
+      const NUM_BONDS_BUYING = 3;
+      fundStablecoin(BOND_COST * NUM_BONDS_BUYING, buyer.address);
+      buyBond(NUM_BONDS_BUYING, BOND_COST);
+
+      runtime.optInToApp(trader.address, applicationId, {}, {});
+      runtime.optIntoASA(bondId, trader.address, {})
+
+      // trade
+      runtime.setRoundAndTimestamp(4, END_BUY_DATE + 1);
+
+      const bondEscrowAddress = bondEscrowLsig.address();
+      const NUM_BONDS_TRADING = 2;
+
+      const initialBuyerBondsHolding = runtime.getAssetHolding(bondId, buyer.address);
+      const initialBuyerLocalBondsOwned = getLocal(buyer.address, stringToBytes('NoOfBondsOwned'));
 
       // Atomic Transaction
       const donateTxGroup = [
@@ -345,16 +450,17 @@ describe('Green Bond Tests', function () {
           fromAccount: buyer.account,
           appId: applicationId,
           payFlags: {},
-          appArgs: [stringToBytes('buy')]
+          appArgs: [stringToBytes('trade')],
+          accounts: [trader.address]
         },
         {
           type: types.TransactionType.RevokeAsset,
           sign: types.SignType.LogicSignature,
           fromAccount: bondEscrow.account,
           lsig: bondEscrowLsig,
-          revocationTarget: bondEscrowAddress,
-          recipient: buyer.address,
-          amount: NUM_BONDS_BUYING,
+          revocationTarget: buyer.address,
+          recipient: trader.address,
+          amount: NUM_BONDS_TRADING,
           assetID: bondId,
           payFlags: { totalFee: 1000 }
         },
@@ -365,26 +471,24 @@ describe('Green Bond Tests', function () {
           toAccountAddr: bondEscrowAddress,
           amountMicroAlgos: 1000,
           payFlags: { totalFee: 1000 }
-        },
-        {
-          type: types.TransactionType.TransferAsset,
-          sign: types.SignType.SecretKey,
-          fromAccount: buyer.account,
-          toAccountAddr: issuer.address,
-          amount: NUM_BONDS_BUYING * BOND_COST,
-          assetID: stablecoinId,
-          payFlags: { totalFee: 1000 }
         }
       ];
 
       runtime.executeTx(donateTxGroup);
 
-      const bondsHolding = runtime.getAssetHolding(bondId, buyer.address);
-      assert.equal(bondsHolding.amount, NUM_BONDS_BUYING);
-    });
-  });
+      // verify traded
+      const afterBuyerBondsHolding = runtime.getAssetHolding(bondId, buyer.address);
+      const afterBuyerLocalBondsOwned = getLocal(buyer.address, stringToBytes('NoOfBondsOwned'));
+      const traderBondHolding = runtime.getAssetHolding(bondId, trader.address);
+      const traderLocalBondsOwned = getLocal(trader.address, stringToBytes('NoOfBondsOwned'));
 
-  describe('trade', function () {
+      assert.equal(afterBuyerBondsHolding.amount,
+        initialBuyerBondsHolding.amount - BigInt(NUM_BONDS_TRADING));
+      assert.equal(afterBuyerLocalBondsOwned,
+        initialBuyerLocalBondsOwned - BigInt(NUM_BONDS_TRADING));
+      assert.equal(traderBondHolding.amount, NUM_BONDS_TRADING);
+      assert.equal(traderLocalBondsOwned, NUM_BONDS_TRADING);
+    });
   });
 
   describe('claim_coupon', function () {
