@@ -13,7 +13,7 @@ def contract(args):
         App.globalPut(Bytes("BondLength"), Btoi(Txn.application_args[3])),  # no of 6 month periods
         App.globalPut(Bytes("BondID"), Btoi(Txn.application_args[4])),
         App.globalPut(Bytes("BondCost"), Btoi(Txn.application_args[5])),
-        App.globalPut(Bytes("BondCouponPaymentValue"), Btoi(Txn.application_args[6])),  # TODO: Handle 0 ie no coupon
+        App.globalPut(Bytes("BondCouponPaymentValue"), Btoi(Txn.application_args[6])),
         App.globalPut(Bytes("BondPrincipal"), Btoi(Txn.application_args[7])),
         App.globalPut(Bytes("MaturityDate"), Add(
             App.globalGet(Bytes("EndBuyDate")),
@@ -174,13 +174,15 @@ def contract(args):
             new_num_installments_payed.load()
         )
     )
+    has_coupon = App.globalGet(Bytes("BondCouponPaymentValue")) > Int(0)
     # Combine
     claim_coupon_verify = And(
         Global.group_size() == Int(3),
         claim_coupon_fee_transfer,
         claim_coupon_stablecoin_transfer,
         has_not_exceeded_installments,
-        after_installment_date
+        after_installment_date,
+        has_coupon
     )
     # Update how many bond coupon payments
     on_claim_coupon = Seq([
@@ -229,9 +231,11 @@ def contract(args):
         Gtxn[4].receiver() == Gtxn[2].sender(),
         Gtxn[4].amount() >= Gtxn[2].fee(),
     )
-    # verify have collected all coupon payments
-    collected_all_coupons = App.globalGet(Bytes("BondLength")) == \
-                            App.localGet(Int(0), Bytes("NoOfBondCouponPayments"))
+    # verify have collected all coupon payments or no coupons
+    collected_all_coupons = Or(
+        App.globalGet(Bytes("BondLength")) == App.localGet(Int(0), Bytes("NoOfBondCouponPayments")),
+        App.globalGet(Bytes("BondCouponPaymentValue")) == Int(0)
+    )
     # Combine
     claim_principal_verify = And(
         Global.group_size() == Int(5),

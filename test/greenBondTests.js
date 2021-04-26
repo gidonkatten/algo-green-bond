@@ -149,7 +149,7 @@ describe('Green Bond Tests', function () {
     const bondEscrowAddress = bondEscrowLsig.address();
 
     // Atomic Transaction
-    const donateTxGroup = [
+    const buyTxGroup = [
       {
         type: types.TransactionType.CallNoOpSSC,
         sign: types.SignType.SecretKey,
@@ -188,7 +188,7 @@ describe('Green Bond Tests', function () {
       }
     ];
 
-    runtime.executeTx(donateTxGroup);
+    runtime.executeTx(buyTxGroup);
   }
 
   this.beforeAll(async function () {
@@ -443,7 +443,7 @@ describe('Green Bond Tests', function () {
       const initialBuyerLocalBondsOwned = getLocal(buyer.address, stringToBytes('NoOfBondsOwned'));
 
       // Atomic Transaction
-      const donateTxGroup = [
+      const tradeTxGroup = [
         {
           type: types.TransactionType.CallNoOpSSC,
           sign: types.SignType.SecretKey,
@@ -474,7 +474,7 @@ describe('Green Bond Tests', function () {
         }
       ];
 
-      runtime.executeTx(donateTxGroup);
+      runtime.executeTx(tradeTxGroup);
 
       // verify traded
       const afterBuyerBondsHolding = runtime.getAssetHolding(bondId, buyer.address);
@@ -492,6 +492,67 @@ describe('Green Bond Tests', function () {
   });
 
   describe('claim_coupon', function () {
+
+    it('should be able to claim coupon at coupon time', () => {
+      // setup
+      createApp({});
+      setStablecoinEscrowInApp();
+      runtime.optInToApp(buyer.address, applicationId, {}, {});
+      runtime.setRoundAndTimestamp(3, START_BUY_DATE);
+      const NUM_BONDS_BUYING = 3;
+      fundStablecoin(BOND_COST * NUM_BONDS_BUYING, buyer.address);
+      buyBond(NUM_BONDS_BUYING, BOND_COST);
+
+      // claim coupon
+      runtime.setRoundAndTimestamp(4, END_BUY_DATE + SIX_MONTH_PERIOD);
+      const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
+      fundStablecoin(BOND_COST * NUM_BONDS_BUYING, stablecoinEscrowAddress);
+
+      const initialBuyerStablecoinHolding = runtime.getAssetHolding(stablecoinId, buyer.address);
+      const initialEscrowStablecoinHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrowAddress);
+
+      // Atomic Transaction
+      const claimCouponTxGroup = [
+        {
+          type: types.TransactionType.CallNoOpSSC,
+          sign: types.SignType.SecretKey,
+          fromAccount: buyer.account,
+          appId: applicationId,
+          payFlags: {},
+          appArgs: [stringToBytes('claim_coupon')]
+        },
+        {
+          type: types.TransactionType.TransferAlgo,
+          sign: types.SignType.SecretKey,
+          fromAccount: buyer.account,
+          toAccountAddr: stablecoinEscrowAddress,
+          amountMicroAlgos: 1000,
+          payFlags: { totalFee: 1000 }
+        },
+        {
+          type: types.TransactionType.TransferAsset,
+          sign: types.SignType.LogicSignature,
+          fromAccount: stablecoinEscrow.account,
+          lsig: stablecoinEscrowLsig,
+          toAccountAddr: buyer.address,
+          amount: NUM_BONDS_BUYING * BOND_COUPON_PAYMENT_VALUE,
+          assetID: stablecoinId,
+          payFlags: { totalFee: 1000 }
+        }
+      ];
+
+      runtime.executeTx(claimCouponTxGroup);
+
+      const localNoOfBondCouponPayments = getLocal(buyer.address, stringToBytes('NoOfBondCouponPayments'));
+      const afterBuyerStablecoinHolding = runtime.getAssetHolding(stablecoinId, buyer.address);
+      const afterEscrowStablecoinHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrowAddress);
+
+      assert.equal(localNoOfBondCouponPayments, 1);
+      assert.equal(afterBuyerStablecoinHolding.amount,
+        initialBuyerStablecoinHolding.amount + BigInt(NUM_BONDS_BUYING * BOND_COUPON_PAYMENT_VALUE));
+      assert.equal(afterEscrowStablecoinHolding.amount,
+        initialEscrowStablecoinHolding.amount - BigInt(NUM_BONDS_BUYING * BOND_COUPON_PAYMENT_VALUE));
+    });
   });
 
   describe('claim_principal', function () {
