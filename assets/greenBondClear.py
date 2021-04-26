@@ -6,4 +6,4 @@ def contract():
 
 
 if __name__ == "__main__":
-    print(compileTeal(contract(), Mode.Application, version=3))
+    print(compileTeal(contract(), Mode.Application, version=2))

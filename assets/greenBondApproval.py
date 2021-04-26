@@ -2,18 +2,23 @@ from pyteal import *
 
 
 def contract(args):
+    # TODO: Verify no rekey, close out etc
+
     # Verify 8 args passed and store them
     on_creation = Seq([
-        Assert(Txn.application_args.length() == Int(9)),
+        Assert(Txn.application_args.length() == Int(8)),
         App.globalPut(Bytes("IssuerAddr"), Txn.application_args[0]),
         App.globalPut(Bytes("StartBuyDate"), Btoi(Txn.application_args[1])),
         App.globalPut(Bytes("EndBuyDate"), Btoi(Txn.application_args[2])),
-        App.globalPut(Bytes("MaturityDate"), Btoi(Txn.application_args[3])),
+        App.globalPut(Bytes("BondLength"), Btoi(Txn.application_args[3])),  # no of 6 month periods
         App.globalPut(Bytes("BondID"), Btoi(Txn.application_args[4])),
         App.globalPut(Bytes("BondCost"), Btoi(Txn.application_args[5])),
-        App.globalPut(Bytes("BondCouponPaymentValue"), Btoi(Txn.application_args[6])),
-        App.globalPut(Bytes("BondCouponInstallments"), Btoi(Txn.application_args[7])),
-        App.globalPut(Bytes("BondPrincipal"), Btoi(Txn.application_args[8])),
+        App.globalPut(Bytes("BondCouponPaymentValue"), Btoi(Txn.application_args[6])),  # TODO: Handle 0 ie no coupon
+        App.globalPut(Bytes("BondPrincipal"), Btoi(Txn.application_args[7])),
+        App.globalPut(Bytes("MaturityDate"), Add(
+            App.globalGet(Bytes("EndBuyDate")),
+            Mul(Int(args["SIX_MONTH_PERIOD"]), App.globalGet(Bytes("BondLength")))
+        )),
         Int(1)
     ])
 
@@ -26,9 +31,10 @@ def contract(args):
         Int(1)
     ])
 
-    # If before start date then can set the stablecoin contract account address
+    # If before start date then creator can set the stablecoin contract account address
     on_set_stablecoin_escrow = Seq([
-        Assert(Global.latest_timestamp() <= App.globalGet(Bytes("StartBuyDate"))),
+        Assert(Global.latest_timestamp() < App.globalGet(Bytes("StartBuyDate"))),
+        # Assert(Txn.sender() == App.globalGet(Bytes("CreatorAddress"))), # TODO: Add for TEAL3
         App.globalPut(Bytes("StablecoinEscrowAddr"), Txn.application_args[1]),
         Int(1)
     ])
@@ -83,6 +89,7 @@ def contract(args):
     ])
 
     # TRADE: verify there are at least three transactions in atomic transfer
+    # NOTE: Account bond trading to is specified in account array so can access its local state
     # 0. call to this contract (verified below)
     # 1. transfer of bond from sender to account 2
     trade_bond_transfer = And(
@@ -99,16 +106,24 @@ def contract(args):
         Gtxn[2].amount() >= Gtxn[1].fee(),
     )
     # 3,4,... Optional (e.g for payment when transferring bonds)
-    # TODO: verify both parties have collected same number of coupon installments
     # Combine
     trade_verify = And(
         Global.group_size() >= Int(3),
         trade_bond_transfer,
         trade_fee_transfer,
     )
+    # verify account gaining bond has same number of coupon payments if they already own some bonds
+    has_same_num_installments = If(
+        App.localGet(Int(1), Bytes("NoOfBondsOwned")) > Int(0),
+        Assert(
+            App.localGet(Int(0), Bytes("NoOfBondCouponPayments")) ==
+            App.localGet(Int(1), Bytes("NoOfBondCouponPayments"))
+        )
+    )
     # Update how many bonds owned in each account
     on_trade = Seq([
         Assert(trade_verify),
+        has_same_num_installments,
         App.localPut(
             Int(0),
             Bytes("NoOfBondsOwned"),
@@ -142,24 +157,15 @@ def contract(args):
             App.localGet(Int(0), Bytes("NoOfBondsOwned"))
         )
     )
-    # verify (Local.NoOfBondCouponPayments + 1) <= Global.BondCouponInstallments
+    # verify (Local.NoOfBondCouponPayments + 1) <= Global.BondLength
     new_num_installments_payed = ScratchVar(TealType.uint64)
     has_not_exceeded_installments = new_num_installments_payed.load() <= \
-                                    App.globalGet(Bytes("BondCouponInstallments"))
-    #  verify that the installment time has passed (b <= c):
-    # a = (MaturityDate - EndBuyDate) / Global.BondCouponInstallments
-    # b = EndBuyDate + (a * (Local.NoOfBondCouponPayments + 1))
-    # c = CurrentTime
+                                    App.globalGet(Bytes("BondLength"))
+    # verify that the installment time has passed:
     after_installment_date = Global.latest_timestamp() >= Add(
         App.globalGet(Bytes("EndBuyDate")),
         Mul(
-            Div(
-                Minus(
-                    App.globalGet(Bytes("MaturityDate")),
-                    App.globalGet(Bytes("EndBuyDate"))
-                ),
-                App.globalGet(Bytes("BondCouponInstallments"))
-            ),
+            Int(args["SIX_MONTH_PERIOD"]),
             new_num_installments_payed.load()
         )
     )
@@ -219,7 +225,7 @@ def contract(args):
         Gtxn[4].amount() >= Gtxn[2].fee(),
     )
     # verify have collected all coupon payments
-    collected_all_coupons = App.globalGet(Bytes("BondCouponInstallments")) == \
+    collected_all_coupons = App.globalGet(Bytes("BondLength")) == \
                             App.localGet(Int(0), Bytes("NoOfBondCouponPayments"))
     # Combine
     claim_principal_verify = And(
@@ -263,6 +269,7 @@ def contract(args):
 
 if __name__ == "__main__":
     params = {
-        "STABLECOIN_ID": 2
+        "STABLECOIN_ID": 2,
+        "SIX_MONTH_PERIOD": 15768000
     }
-    print(compileTeal(contract(params), Mode.Application, version=3))
+    print(compileTeal(contract(params), Mode.Application, version=2))

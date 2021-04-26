@@ -50,16 +50,14 @@ LOCAL_BYTESLICES=0
 LOCAL_INTS=2
 
 BOND_COST=50000000 # $50.000000
-BOND_COUPON_PAYMENT_VALUE=2500000 # $2.500000
-BOND_COUPON_INSTALLMENTS=0 # pay BOND_COUPON 0 times evenly distributed throughout BOND_LENGTH
+BOND_COUPON_PAYMENT_VALUE=2500000 # $2.500000 every 6 months for the BOND_LENGTH
 BOND_PRINCIPAL=100000000 # $100.000000
 SETUP_LENGTH=20 # seconds
 BUY_LENGTH=100 # seconds
-BOND_LENGTH=0 # seconds
+BOND_LENGTH=2 # no of 6 month periods ie 1 year
 CURRRENT_DATE=$(date '+%s')
 START_BUY_DATE=$(($CURRRENT_DATE + $SETUP_LENGTH))
 END_BUY_DATE=$(($START_BUY_DATE + $BUY_LENGTH))
-MATURITY_DATE=$(($END_BUY_DATE + $BOND_LENGTH))
 
 APP_ID=$(
   ${gcmd} app create --creator ${ACCOUNT} \
@@ -72,11 +70,10 @@ APP_ID=$(
     --app-arg "addr:${ACCOUNT}" \
     --app-arg "int:${START_BUY_DATE}" \
     --app-arg "int:${END_BUY_DATE}" \
-    --app-arg "int:${MATURITY_DATE}" \
+    --app-arg "int:${BOND_LENGTH}" \
     --app-arg "int:${BOND_ID}" \
     --app-arg "int:${BOND_COST}" \
     --app-arg "int:${BOND_COUPON_PAYMENT_VALUE}" \
-    --app-arg "int:${BOND_COUPON_INSTALLMENTS}" \
     --app-arg "int:${BOND_PRINCIPAL}" |
     grep Created |
     awk '{ print $6 }'
