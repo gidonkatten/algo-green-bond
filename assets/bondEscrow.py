@@ -2,6 +2,7 @@ from pyteal import *
 
 
 def contract(args):
+    # Only used for opt-in as close to used when claiming principal
     asset_close_to_check = Txn.asset_close_to() == Global.zero_address()
 
     # Only used for opt-in as bonds will be frozen and transferred via clawback
@@ -12,7 +13,8 @@ def contract(args):
         Txn.fee() <= Int(1000),
         Txn.xfer_asset() == Int(args["BOND_ID"]),
         Txn.last_valid() < Int(args["LV"]),
-        clawback_check
+        clawback_check,
+        asset_close_to_check
     )
 
     # Transaction fee checked
@@ -22,11 +24,10 @@ def contract(args):
         Gtxn[0].application_id() == Int(args["APP_ID"])
     )
 
-    # Since asset transfer, cannot have rekey or close-to
+    # Since asset transfer, cannot have rekey
     # Other transactions in group (if any) checked in stateful contract call
     return And(
         Txn.type_enum() == TxnType.AssetTransfer,
-        asset_close_to_check,
         Cond(
             [Global.group_size() == Int(1), opt_in],
             [Global.group_size() >= Int(3), bond_transfer],
