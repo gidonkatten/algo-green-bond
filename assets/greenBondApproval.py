@@ -4,7 +4,34 @@ from pyteal import *
 def contract(args):
     # TODO: Verify no rekey, close out etc
 
-    sender_asset_balance = AssetHolding.balance(Int(0), App.globalGet(Bytes("BondId")))
+    sender_bond_balance = AssetHolding.balance(Int(0), App.globalGet(Bytes("BondId")))
+
+    # Used for DEFAULT, CLAIM COUPON and CLAIM PRINCIPAL
+    stablecoin_escrow_balance = AssetHolding.balance(Int(1), Int(args["STABLECOIN_ID"]))
+    # max of BondLength and no of six month periods passed (rounded down)
+    coupon_round = If(
+        Global.latest_timestamp() > App.globalGet(Bytes("MaturityDate")),
+        App.globalGet(Bytes("BondLength")),
+        Div(
+            Global.latest_timestamp() - App.globalGet(Bytes("EndBuyDate")),
+            Int(args["SIX_MONTH_PERIOD"])
+        )
+    )
+    remaining_coupon_value_owed_now = Mul(
+        App.globalGet(Bytes("BondCouponPaymentValue")),
+        Minus(
+            coupon_round * App.globalGet(Bytes("NoOfBondsInCirculation")),
+            App.globalGet(Bytes("TotalBondCouponPayments"))
+        )
+    )
+    # 0 if not yet maturity
+    remaining_principal_value_owed_now = If(
+        Global.latest_timestamp() > App.globalGet(Bytes("MaturityDate")),
+        App.globalGet(Bytes("BondPrincipal")) * App.globalGet(Bytes("NoOfBondsInCirculation")),
+        Int(0)
+    )
+    has_defaulted = (remaining_coupon_value_owed_now + remaining_principal_value_owed_now) > \
+        stablecoin_escrow_balance.value()
 
     # Verify 8 args passed and store them
     on_creation = Seq([
@@ -15,7 +42,7 @@ def contract(args):
         App.globalPut(Bytes("BondLength"), Btoi(Txn.application_args[3])),  # no of 6 month periods
         App.globalPut(Bytes("BondId"), Btoi(Txn.application_args[4])),
         App.globalPut(Bytes("BondCost"), Btoi(Txn.application_args[5])),
-        App.globalPut(Bytes("BondCouponPaymentValue"), Btoi(Txn.application_args[6])),
+        App.globalPut(Bytes("BondCouponPaymentValue"), Btoi(Txn.application_args[6])),  # 0 if no coupon
         App.globalPut(Bytes("BondPrincipal"), Btoi(Txn.application_args[7])),
         App.globalPut(Bytes("MaturityDate"), Add(
             App.globalGet(Bytes("EndBuyDate")),
@@ -89,7 +116,7 @@ def contract(args):
     ])
 
     # TRADE: verify there are at least three transactions in atomic transfer
-    # NOTE: Account bond trading to is specified in account array so can access its local state
+    # NOTE: Account bond trading to is specified in account array pos 1
     # 0. call to this contract (verified below)
     # 1. transfer of bond from sender to account 2
     trade_bond_transfer = And(
@@ -120,11 +147,11 @@ def contract(args):
     # if receiver of bond already is an owner
     # then: verify receiver has same number of coupon payments as sender
     # else: set receiver's NoOfBondCouponPayments to the sender's NoOfBondCouponPayments
-    receiver_asset_balance = AssetHolding.balance(Int(1), App.globalGet(Bytes("BondId")))
+    receiver_bond_balance = AssetHolding.balance(Int(1), App.globalGet(Bytes("BondId")))
     has_same_num_installments = Seq([
-        receiver_asset_balance,
+        receiver_bond_balance,
         If(
-            receiver_asset_balance.value() > Int(0),
+            receiver_bond_balance.value() > Int(0),
             Assert(
                 App.localGet(Int(0), Bytes("NoOfBondCouponPayments")) ==
                 App.localGet(Int(1), Bytes("NoOfBondCouponPayments"))
@@ -144,6 +171,7 @@ def contract(args):
     ])
 
     # CLAIM COUPON: verify there are three transactions in atomic transfer
+    # NOTE: StablecoinEscrow account is specified in account array pos 1
     # 0. call to this contract (verified below)
     # 1. transfer of algos from buyer to stablecoin contract account (fee of tx2)
     claim_coupon_fee_transfer = And(
@@ -160,44 +188,42 @@ def contract(args):
         Gtxn[2].xfer_asset() == Int(args["STABLECOIN_ID"]),
         Gtxn[2].asset_amount() == Mul(
             App.globalGet(Bytes("BondCouponPaymentValue")),
-            sender_asset_balance.value()
+            sender_bond_balance.value()
         )
     )
-    # verify (Local.NoOfBondCouponPayments + 1) <= Global.BondLength
-    new_num_installments_payed = ScratchVar(TealType.uint64)
-    has_not_exceeded_installments = new_num_installments_payed.load() <= \
-                                    App.globalGet(Bytes("BondLength"))
-    # verify that the installment time has passed:
-    after_installment_date = Global.latest_timestamp() >= Add(
-        App.globalGet(Bytes("EndBuyDate")),
-        Int(args["SIX_MONTH_PERIOD"]) * new_num_installments_payed.load()
-    )
+    # verify have not already claimed coupon:
+    owed_coupon = App.localGet(Int(0), Bytes("NoOfBondCouponPayments")) < coupon_round
+    # verify coupon exists
     has_coupon = App.globalGet(Bytes("BondCouponPaymentValue")) > Int(0)
     # Combine
     claim_coupon_verify = And(
         Global.group_size() == Int(3),
         claim_coupon_fee_transfer,
         claim_coupon_stablecoin_transfer,
-        has_not_exceeded_installments,
-        after_installment_date,
-        has_coupon
+        owed_coupon,
+        has_coupon,
     )
-    # Update how many bond coupon payments
+    # Update how many bond coupon payments locally and globally
     on_claim_coupon = Seq([
-        new_num_installments_payed.store(
-           App.localGet(Int(0), Bytes("NoOfBondCouponPayments")) + Int(1)
-        ),
-        sender_asset_balance,
+        stablecoin_escrow_balance,
+        Assert(App.globalGet(Bytes("StablecoinEscrowAddr")) == Txn.accounts[1]),
+        Assert(Not(has_defaulted)),
+        sender_bond_balance,
         Assert(claim_coupon_verify),
         App.localPut(
             Int(0),
             Bytes("NoOfBondCouponPayments"),
-            new_num_installments_payed.load()
+            App.localGet(Int(0), Bytes("NoOfBondCouponPayments")) + Int(1)
+        ),
+        App.globalPut(
+            Bytes("TotalBondCouponPayments"),
+            App.globalGet(Bytes("TotalBondCouponPayments")) + sender_bond_balance.value()
         ),
         Int(1)
     ])
 
     # CLAIM PRINCIPAL: verify there are four transactions in atomic transfer
+    # NOTE: StablecoinEscrow account is specified in account array pos 1
     # 0. call to this contract (verified below)
     # 1. transfer of bond from sender to bond contract account (all bonds owned + opting out)
     claim_principal_bond_transfer = And(
@@ -205,7 +231,7 @@ def contract(args):
         Gtxn[1].asset_sender() == Txn.sender(),
         Gtxn[1].asset_receiver() == Gtxn[1].sender(),
         Gtxn[1].xfer_asset() == App.globalGet(Bytes("BondId")),
-        Gtxn[1].asset_amount() == sender_asset_balance.value(),
+        Gtxn[1].asset_amount() == sender_bond_balance.value(),
         Gtxn[1].asset_close_to() == Gtxn[1].sender()
     )
     # 2. transfer of USDC from stablecoin contract account to sender (NoOfBonds * BondPrincipal)
@@ -230,7 +256,7 @@ def contract(args):
         Gtxn[4].receiver() == Gtxn[2].sender(),
         Gtxn[4].amount() >= Gtxn[2].fee(),
     )
-    # verify have collected all coupon payments or no coupons
+    # verify have collected all coupon payments or no coupons exists
     collected_all_coupons = Or(
         App.globalGet(Bytes("BondLength")) == App.localGet(Int(0), Bytes("NoOfBondCouponPayments")),
         App.globalGet(Bytes("BondCouponPaymentValue")) == Int(0)
@@ -243,11 +269,14 @@ def contract(args):
         claim_principal_fee_transfer1,
         claim_principal_fee_transfer2,
         collected_all_coupons,
-        Global.latest_timestamp() >= App.globalGet(Bytes("MaturityDate")),
+        Global.latest_timestamp() >= App.globalGet(Bytes("MaturityDate"))
     )
     #
     on_claim_principal = Seq([
-        sender_asset_balance,
+        stablecoin_escrow_balance,
+        Assert(App.globalGet(Bytes("StablecoinEscrowAddr")) == Txn.accounts[1]),
+        Assert(Not(has_defaulted)),
+        sender_bond_balance,
         Assert(claim_principal_verify),
         App.globalPut(
             Bytes("NoOfBondsInCirculation"),
@@ -269,6 +298,7 @@ def contract(args):
         [Txn.application_args[0] == Bytes("trade"), on_trade],
         [Txn.application_args[0] == Bytes("claim_coupon"), on_claim_coupon],
         [Txn.application_args[0] == Bytes("claim_principal"), on_claim_principal]
+        # [Txn.application_args[0] == Bytes("claim_default"), on_claim_default]
     )
 
     # Ensure call to contract is first (in atomic group)

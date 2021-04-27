@@ -21,14 +21,6 @@ const issuerAddr = "EMO2JEPSRWNAJGR62S75GQ4ICOKVNI46AYRERZPJOWYUFEYEZJ6BU5GMXY";
 const investorAddr = "FCRSMPKRY5JPS4IQ2M7P4JRRIJSHRXL5S3NFTGHYP5GQD2XERNYUWEXG54";
 const traderAddr = "TWYS3Y6SJOUW6WIEIXTBOII7523QI4MUO3TSYDS7SCG4TIGGC2S6V6TJP4";
 
-/**
- * NOTE: The following unit tests test the happy flow of the bond application.
- * - Each test is independent of each other
- * - We are testing each branch of TEAL code independently here.
- * eg. To test the "buy:" branch, we prepare the state using getLocalState, setGlobalState
- * functions in runtime, and set the state directly (to avoid calling the smart contract)
- * We only call the smart contract during the actual 'claim' tx call, and verify state later.
- */
 describe('Green Bond Tests', function () {
   let master = new AccountStore(1000e6, { addr: masterAddr, sk: new Uint8Array(0) });
   let issuer = new AccountStore(MIN_BALANCE, { addr: issuerAddr, sk: new Uint8Array(0) });
@@ -102,7 +94,7 @@ describe('Green Bond Tests', function () {
       sender: master.account,
       localInts: 1,
       localBytes: 0,
-      globalInts: 9,
+      globalInts: 10,
       globalBytes: 2
     };
 
@@ -513,7 +505,8 @@ describe('Green Bond Tests', function () {
           fromAccount: investor.account,
           appId: applicationId,
           payFlags: {},
-          appArgs: [stringToBytes('claim_coupon')]
+          appArgs: [stringToBytes('claim_coupon')],
+          accounts: [stablecoinEscrowAddress]
         },
         {
           type: types.TransactionType.TransferAlgo,
@@ -538,10 +531,12 @@ describe('Green Bond Tests', function () {
       runtime.executeTx(claimCouponTxGroup);
 
       const localNoOfBondCouponPayments = getLocal(investor.address, 'NoOfBondCouponPayments');
+      const totalBondCouponPayments = getGlobal('TotalBondCouponPayments');
       const afterInvestorStablecoinHolding = runtime.getAssetHolding(stablecoinId, investor.address);
       const afterEscrowStablecoinHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrowAddress);
 
       assert.equal(localNoOfBondCouponPayments, 1);
+      assert.equal(totalBondCouponPayments, NUM_BONDS_BUYING);
       assert.equal(afterInvestorStablecoinHolding.amount,
         initialInvestorStablecoinHolding.amount + BigInt(NUM_BONDS_BUYING * BOND_COUPON_PAYMENT_VALUE));
       assert.equal(afterEscrowStablecoinHolding.amount,
@@ -581,7 +576,8 @@ describe('Green Bond Tests', function () {
           fromAccount: investor.account,
           appId: applicationId,
           payFlags: {},
-          appArgs: [stringToBytes('claim_principal')]
+          appArgs: [stringToBytes('claim_principal')],
+          accounts: [stablecoinEscrowAddress]
         },
         {
           type: types.TransactionType.RevokeAsset,

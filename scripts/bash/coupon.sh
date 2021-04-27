@@ -23,7 +23,7 @@ STABLECOIN_ID=2
 APP_ID=3
 
 # create transactions
-${gcmd2} app call --app-id ${APP_ID} --app-arg "str:claim_coupon" --from ${ACCOUNT2} --out=unsignedtx0.tx
+${gcmd2} app call --app-id ${APP_ID} --app-arg "str:claim_coupon" --app-account ${STABLECOIN_STATELESS_ADDRESS} --from ${ACCOUNT2} --out=unsignedtx0.tx
 ${gcmd2} clerk send --from=${ACCOUNT2} --to=${STABLECOIN_STATELESS_ADDRESS} --fee=1000 --amount=1000 --out=unsignedtx1.tx
 ${gcmd2} asset send --from=${STABLECOIN_STATELESS_ADDRESS} --to=${ACCOUNT2} --assetid ${STABLECOIN_ID} --fee=1000 --amount=7500000 --out=unsignedtx2.tx
 # combine transactions
