@@ -4,6 +4,8 @@ from pyteal import *
 def contract(args):
     # TODO: Verify no rekey, close out etc
 
+    sender_asset_balance = AssetHolding.balance(Int(0), App.globalGet(Bytes("BondId")))
+
     # Verify 8 args passed and store them
     on_creation = Seq([
         Assert(Txn.application_args.length() == Int(8)),
@@ -76,14 +78,9 @@ def contract(args):
         buy_stablecoin_transfer,
         in_buy_period
     )
-    # Update how many bonds owned in account
+    # Update how many bonds in circulation
     on_buy = Seq([
         Assert(buy_verify),
-        App.localPut(
-            Int(0),
-            Bytes("NoOfBondsOwned"),
-            App.localGet(Int(0), Bytes("NoOfBondsOwned")) + Gtxn[1].asset_amount()
-        ),
         App.globalPut(
             Bytes("NoOfBondsInCirculation"),
             App.globalGet(Bytes("NoOfBondsInCirculation")) + Gtxn[1].asset_amount()
@@ -120,28 +117,29 @@ def contract(args):
         trade_fee_transfer,
         in_trade_window
     )
-    # verify account gaining bond has same number of coupon payments if they already own some bonds
-    has_same_num_installments = If(
-        App.localGet(Int(1), Bytes("NoOfBondsOwned")) > Int(0),
-        Assert(
-            App.localGet(Int(0), Bytes("NoOfBondCouponPayments")) ==
-            App.localGet(Int(1), Bytes("NoOfBondCouponPayments"))
+    # if receiver of bond already is an owner
+    # then: verify receiver has same number of coupon payments as sender
+    # else: set receiver's NoOfBondCouponPayments to the sender's NoOfBondCouponPayments
+    receiver_asset_balance = AssetHolding.balance(Int(1), App.globalGet(Bytes("BondId")))
+    has_same_num_installments = Seq([
+        receiver_asset_balance,
+        If(
+            receiver_asset_balance.value() > Int(0),
+            Assert(
+                App.localGet(Int(0), Bytes("NoOfBondCouponPayments")) ==
+                App.localGet(Int(1), Bytes("NoOfBondCouponPayments"))
+            ),
+            App.localPut(
+                Int(1),
+                Bytes("NoOfBondCouponPayments"),
+                App.localGet(Int(0), Bytes("NoOfBondCouponPayments"))
+            )
         )
-    )
-    # Update how many bonds owned in each account
+    ])
+    #
     on_trade = Seq([
         Assert(trade_verify),
         has_same_num_installments,
-        App.localPut(
-            Int(0),
-            Bytes("NoOfBondsOwned"),
-            Minus(App.localGet(Int(0), Bytes("NoOfBondsOwned")), Gtxn[1].asset_amount())
-        ),
-        App.localPut(
-            Int(1),
-            Bytes("NoOfBondsOwned"),
-            App.localGet(Int(1), Bytes("NoOfBondsOwned")) + Gtxn[1].asset_amount()
-        ),
         Int(1)
     ])
 
@@ -162,7 +160,7 @@ def contract(args):
         Gtxn[2].xfer_asset() == Int(args["STABLECOIN_ID"]),
         Gtxn[2].asset_amount() == Mul(
             App.globalGet(Bytes("BondCouponPaymentValue")),
-            App.localGet(Int(0), Bytes("NoOfBondsOwned"))
+            sender_asset_balance.value()
         )
     )
     # verify (Local.NoOfBondCouponPayments + 1) <= Global.BondLength
@@ -189,6 +187,7 @@ def contract(args):
         new_num_installments_payed.store(
            App.localGet(Int(0), Bytes("NoOfBondCouponPayments")) + Int(1)
         ),
+        sender_asset_balance,
         Assert(claim_coupon_verify),
         App.localPut(
             Int(0),
@@ -206,7 +205,7 @@ def contract(args):
         Gtxn[1].asset_sender() == Txn.sender(),
         Gtxn[1].asset_receiver() == Gtxn[1].sender(),
         Gtxn[1].xfer_asset() == App.globalGet(Bytes("BondId")),
-        Gtxn[1].asset_amount() == App.localGet(Int(0), Bytes("NoOfBondsOwned")),
+        Gtxn[1].asset_amount() == sender_asset_balance.value(),
         Gtxn[1].asset_close_to() == Gtxn[1].sender()
     )
     # 2. transfer of USDC from stablecoin contract account to sender (NoOfBonds * BondPrincipal)
@@ -246,14 +245,10 @@ def contract(args):
         collected_all_coupons,
         Global.latest_timestamp() >= App.globalGet(Bytes("MaturityDate")),
     )
-    # Update how many bonds owned in account
+    #
     on_claim_principal = Seq([
+        sender_asset_balance,
         Assert(claim_principal_verify),
-        App.localPut(
-            Int(0),
-            Bytes("NoOfBondsOwned"),
-            Int(0)
-        ),
         App.globalPut(
             Bytes("NoOfBondsInCirculation"),
             App.globalGet(Bytes("NoOfBondsInCirculation")) - Gtxn[1].asset_amount()

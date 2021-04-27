@@ -100,7 +100,7 @@ describe('Green Bond Tests', function () {
 
     creationFlags = {
       sender: master.account,
-      localInts: 2,
+      localInts: 1,
       localBytes: 0,
       globalInts: 9,
       globalBytes: 2
@@ -410,13 +410,11 @@ describe('Green Bond Tests', function () {
       const afterStablecoinHolding = runtime.getAssetHolding(stablecoinId, investor.address);
       const bondsInCirculation = getGlobal("NoOfBondsInCirculation");
       const bondsHolding = runtime.getAssetHolding(bondId, investor.address);
-      const localBondsOwned = getLocal(investor.address, 'NoOfBondsOwned');
 
       assert.equal(afterStablecoinHolding.amount,
         initialStablecoinHolding.amount - BigInt(BOND_COST * NUM_BONDS_BUYING));
       assert.equal(bondsInCirculation, NUM_BONDS_BUYING);
       assert.equal(bondsHolding.amount, NUM_BONDS_BUYING);
-      assert.equal(localBondsOwned, NUM_BONDS_BUYING);
     });
   });
 
@@ -442,7 +440,6 @@ describe('Green Bond Tests', function () {
       const NUM_BONDS_TRADING = 2;
 
       const initialInvestorBondsHolding = runtime.getAssetHolding(bondId, investor.address);
-      const initialInvestorLocalBondsOwned = getLocal(investor.address, 'NoOfBondsOwned');
 
       // Atomic Transaction
       const tradeTxGroup = [
@@ -480,16 +477,11 @@ describe('Green Bond Tests', function () {
 
       // verify traded
       const afterInvestorBondsHolding = runtime.getAssetHolding(bondId, investor.address);
-      const afterInvestorLocalBondsOwned = getLocal(investor.address, 'NoOfBondsOwned');
       const traderBondHolding = runtime.getAssetHolding(bondId, trader.address);
-      const traderLocalBondsOwned = getLocal(trader.address, 'NoOfBondsOwned');
 
       assert.equal(afterInvestorBondsHolding.amount,
         initialInvestorBondsHolding.amount - BigInt(NUM_BONDS_TRADING));
-      assert.equal(afterInvestorLocalBondsOwned,
-        initialInvestorLocalBondsOwned - BigInt(NUM_BONDS_TRADING));
       assert.equal(traderBondHolding.amount, NUM_BONDS_TRADING);
-      assert.equal(traderLocalBondsOwned, NUM_BONDS_TRADING);
     });
   });
 
@@ -632,15 +624,12 @@ describe('Green Bond Tests', function () {
 
       runtime.executeTx(claimPrincipalTxGroup);
 
-      const localBondsOwned = getLocal(investor.address, 'NoOfBondsOwned');
       const afterBondsInCirculation = getGlobal("NoOfBondsInCirculation");
       const investorBondHolding = runtime.getAssetHolding(bondId, investor.address);
       const afterEscrowBondHolding = runtime.getAssetHolding(bondId, bondEscrowAddress);
       const afterInvestorStablecoinHolding = runtime.getAssetHolding(stablecoinId, investor.address);
       const afterEscrowStablecoinHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrowAddress);
 
-      assert.equal(localBondsOwned, 0);
-      // assert.isUndefined(investorBondHolding); TODO: Why not opted out of bond
       assert.equal(afterBondsInCirculation, initialBondsInCirculation - BigInt(NUM_BONDS_BUYING));
       assert.equal(investorBondHolding.amount, 0);
       assert.equal(afterEscrowBondHolding.amount,
