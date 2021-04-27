@@ -102,7 +102,7 @@ describe('Green Bond Tests', function () {
       sender: master.account,
       localInts: 2,
       localBytes: 0,
-      globalInts: 8,
+      globalInts: 9,
       globalBytes: 2
     };
 
@@ -312,7 +312,7 @@ describe('Green Bond Tests', function () {
       assert.deepEqual(getGlobal('StartBuyDate'), BigInt(START_BUY_DATE));
       assert.deepEqual(getGlobal('EndBuyDate'), BigInt(END_BUY_DATE));
       assert.deepEqual(getGlobal('BondLength'), BigInt(BOND_LENGTH));
-      assert.deepEqual(getGlobal('BondID'), BigInt(bondId));
+      assert.deepEqual(getGlobal('BondId'), BigInt(bondId));
       assert.deepEqual(getGlobal('BondCost'), BigInt(BOND_COST));
       assert.deepEqual(getGlobal('BondCouponPaymentValue'), BigInt(BOND_COUPON_PAYMENT_VALUE));
       assert.deepEqual(getGlobal('BondPrincipal'), BigInt(BOND_PRINCIPAL));
@@ -407,13 +407,15 @@ describe('Green Bond Tests', function () {
       buyBond(NUM_BONDS_BUYING, BOND_COST);
 
       // verify bought
-      const bondsHolding = runtime.getAssetHolding(bondId, investor.address);
       const afterStablecoinHolding = runtime.getAssetHolding(stablecoinId, investor.address);
+      const bondsInCirculation = getGlobal("NoOfBondsInCirculation");
+      const bondsHolding = runtime.getAssetHolding(bondId, investor.address);
       const localBondsOwned = getLocal(investor.address, 'NoOfBondsOwned');
 
-      assert.equal(bondsHolding.amount, NUM_BONDS_BUYING);
       assert.equal(afterStablecoinHolding.amount,
         initialStablecoinHolding.amount - BigInt(BOND_COST * NUM_BONDS_BUYING));
+      assert.equal(bondsInCirculation, NUM_BONDS_BUYING);
+      assert.equal(bondsHolding.amount, NUM_BONDS_BUYING);
       assert.equal(localBondsOwned, NUM_BONDS_BUYING);
     });
   });
@@ -574,6 +576,7 @@ describe('Green Bond Tests', function () {
       const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
       fundStablecoin(BOND_PRINCIPAL * NUM_BONDS_BUYING, stablecoinEscrowAddress);
 
+      const initialBondsInCirculation = getGlobal("NoOfBondsInCirculation");
       const initialEscrowBondHolding = runtime.getAssetHolding(bondId, bondEscrowAddress);
       const initialInvestorStablecoinHolding = runtime.getAssetHolding(stablecoinId, investor.address);
       const initialEscrowStablecoinHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrowAddress);
@@ -630,6 +633,7 @@ describe('Green Bond Tests', function () {
       runtime.executeTx(claimPrincipalTxGroup);
 
       const localBondsOwned = getLocal(investor.address, 'NoOfBondsOwned');
+      const afterBondsInCirculation = getGlobal("NoOfBondsInCirculation");
       const investorBondHolding = runtime.getAssetHolding(bondId, investor.address);
       const afterEscrowBondHolding = runtime.getAssetHolding(bondId, bondEscrowAddress);
       const afterInvestorStablecoinHolding = runtime.getAssetHolding(stablecoinId, investor.address);
@@ -637,6 +641,7 @@ describe('Green Bond Tests', function () {
 
       assert.equal(localBondsOwned, 0);
       // assert.isUndefined(investorBondHolding); TODO: Why not opted out of bond
+      assert.equal(afterBondsInCirculation, initialBondsInCirculation - BigInt(NUM_BONDS_BUYING));
       assert.equal(investorBondHolding.amount, 0);
       assert.equal(afterEscrowBondHolding.amount,
         initialEscrowBondHolding.amount + BigInt(NUM_BONDS_BUYING));
@@ -646,210 +651,4 @@ describe('Green Bond Tests', function () {
         initialEscrowStablecoinHolding.amount - BigInt(NUM_BONDS_BUYING * BOND_PRINCIPAL));
     });
   });
-
-    // it('Receiver should be able to withdraw funds if Goal is met', () => {
-  //   setupAppAndEscrow();
-  //   // fund end date should be passed
-  //   runtime.setRoundAndTimestamp(2, 15); // StartTs=1, EndTs=10
-  //   runtime.getAccount(creator.address).setGlobalState(applicationId, 'Escrow', addressToPk(escrow.address));
-  //   syncAccounts();
-  //
-  //   creator.optInToApp(applicationId, runtime.getApp(applicationId));
-  //   donor.optInToApp(applicationId, runtime.getApp(applicationId));
-  //   syncAccounts();
-  //
-  //   // fund escrow with amount = goal
-  //   runtime.executeTx({
-  //     type: types.TransactionType.TransferAlgo,
-  //     sign: types.SignType.SecretKey,
-  //     fromAccount: donor.account,
-  //     toAccountAddr: escrow.address,
-  //     amountMicroAlgos: goal,
-  //     payFlags: {}
-  //   });
-  //
-  //   // update Global State
-  //   runtime.getAccount(creator.address).setGlobalState(applicationId, 'Total', BigInt(goal));
-  //   syncAccounts();
-  //
-  //   // transaction to claim/withdraw funds from escrow
-  //   const fundReceiverBal = fundReceiver.balance(); // fund receiver's balance before 'claim' tx
-  //   const escrowFunds = escrow.balance(); //  funds in escrow
-  //   const claimTxGroup = [
-  //     {
-  //       type: types.TransactionType.CallNoOpSSC,
-  //       sign: types.SignType.SecretKey,
-  //       fromAccount: creator.account,
-  //       appId: applicationId,
-  //       payFlags: { totalFee: 1000 },
-  //       appArgs: [stringToBytes('claim')]
-  //     },
-  //     {
-  //       type: types.TransactionType.TransferAlgo,
-  //       sign: types.SignType.LogicSignature,
-  //       fromAccount: escrow.account,
-  //       toAccountAddr: fundReceiver.address,
-  //       amountMicroAlgos: 0,
-  //       lsig: escrowLsig, // initialized in setUpApp
-  //       payFlags: { totalFee: 1000, closeRemainderTo: fundReceiver.address }
-  //     }
-  //   ];
-  //   runtime.executeTx(claimTxGroup);
-  //
-  //   syncAccounts();
-  //   assert.equal(escrow.balance(), 0); // escrow should be empty after claim
-  //   assert.equal(fundReceiver.balance(), fundReceiverBal + escrowFunds - 1000n); // funds transferred to receiver from escrow
-  // });
-  //
-  // it('Donor should be able reclaim funds if Goal is not met', () => {
-  //   setupAppAndEscrow();
-  //   // fund end date should be passed
-  //   runtime.setRoundAndTimestamp(2, 15); // StartTs=1, EndTs=10
-  //   runtime.getAccount(creator.address).setGlobalState(applicationId, 'Escrow', addressToPk(escrow.address));
-  //   syncAccounts();
-  //
-  //   creator.optInToApp(applicationId, runtime.getApp(applicationId));
-  //   donor.optInToApp(applicationId, runtime.getApp(applicationId));
-  //   syncAccounts();
-  //
-  //   // fund escrow with amount < goal
-  //   runtime.executeTx({
-  //     type: types.TransactionType.TransferAlgo,
-  //     sign: types.SignType.SecretKey,
-  //     fromAccount: donor.account,
-  //     toAccountAddr: escrow.address,
-  //     amountMicroAlgos: goal - 1e6,
-  //     payFlags: {}
-  //   });
-  //   syncAccounts();
-  //
-  //   // update Global State
-  //   creator.setGlobalState(applicationId, 'Total', BigInt(goal - 1e6));
-  //   donor.setLocalState(applicationId, 'MyAmountGiven', BigInt(goal - 1e6));
-  //   syncAccounts();
-  //
-  //   // reclaim transaction
-  //   const reclaimTxGroup = [
-  //     {
-  //       type: types.TransactionType.CallNoOpSSC,
-  //       sign: types.SignType.SecretKey,
-  //       fromAccount: donor.account,
-  //       appId: applicationId,
-  //       payFlags: { totalFee: 1000 },
-  //       appArgs: [stringToBytes('reclaim')],
-  //       accounts: [escrow.address] //  AppAccounts
-  //     },
-  //     {
-  //       type: types.TransactionType.TransferAlgo,
-  //       sign: types.SignType.LogicSignature,
-  //       fromAccount: escrow.account,
-  //       toAccountAddr: donor.address,
-  //       amountMicroAlgos: 300000,
-  //       lsig: escrowLsig,
-  //       payFlags: { totalFee: 1000 }
-  //     }
-  //   ];
-  //   const donorBalance = donor.balance();
-  //   const escrowBalance = escrow.balance();
-  //   runtime.executeTx(reclaimTxGroup);
-  //
-  //   syncAccounts();
-  //   // verify 300000 is withdrawn from escrow (with tx fee of 1000 as well)
-  //   assert.equal(escrow.balance(), escrowBalance - 300000n - 1000n);
-  //   assert.equal(donor.balance(), donorBalance + 300000n - 1000n);
-  // });
-  //
-  // it('Creator should be able to delete the application after the fund close date (using single tx)', () => {
-  //   setupAppAndEscrow();
-  //   // fund close date should be passed
-  //   runtime.setRoundAndTimestamp(2, 25); // fundCloseTs=20n
-  //   runtime.getAccount(creator.address).setGlobalState(applicationId, 'Escrow', addressToPk(escrow.address));
-  //   syncAccounts();
-  //
-  //   creator.optInToApp(applicationId, runtime.getApp(applicationId));
-  //   donor.optInToApp(applicationId, runtime.getApp(applicationId));
-  //   syncAccounts();
-  //
-  //   // let's close escrow account first
-  //   runtime.executeTx({
-  //     type: types.TransactionType.TransferAlgo,
-  //     sign: types.SignType.SecretKey,
-  //     fromAccount: escrow.account,
-  //     toAccountAddr: fundReceiver.address,
-  //     amountMicroAlgos: 0,
-  //     payFlags: { totalFee: 1000, closeRemainderTo: fundReceiver.address }
-  //   });
-  //   syncAccounts();
-  //
-  //   // escrow is already empty so we don't need a tx group
-  //   const deleteTx = {
-  //     type: types.TransactionType.DeleteSSC,
-  //     sign: types.SignType.SecretKey,
-  //     fromAccount: creator.account,
-  //     appId: applicationId,
-  //     payFlags: { totalFee: 1000 },
-  //     appArgs: [],
-  //     accounts: [escrow.address] //  AppAccounts
-  //   };
-  //
-  //   // verify app is present before delete
-  //   const app = runtime.getApp(applicationId);
-  //   assert.isDefined(app);
-  //
-  //   runtime.executeTx(deleteTx);
-  //
-  //   // app should be deleted now
-  //   try {
-  //     runtime.getApp(applicationId);
-  //   } catch (error) {
-  //     console.log('[Expected: app does not exist] ', error.message);
-  //   }
-  // });
-  //
-  // it('Creator should be able to delete the application after the fund close date (using group tx)', () => {
-  //   setupAppAndEscrow();
-  //   // fund close date should be passed
-  //   runtime.setRoundAndTimestamp(2, 25); // fundCloseTs=20n
-  //   runtime.getAccount(creator.address).setGlobalState(applicationId, 'Escrow', addressToPk(escrow.address));
-  //   syncAccounts();
-  //
-  //   creator.optInToApp(applicationId, runtime.getApp(applicationId));
-  //   donor.optInToApp(applicationId, runtime.getApp(applicationId));
-  //   syncAccounts();
-  //
-  //   // here escrow still has some funds (minBalance), so this must be a group tx
-  //   // where in the second tx, we empty the escrow account to receiver using closeRemainderTo
-  //   const deleteTxGroup = [
-  //     {
-  //       type: types.TransactionType.DeleteSSC,
-  //       sign: types.SignType.SecretKey,
-  //       fromAccount: creator.account,
-  //       appId: applicationId,
-  //       payFlags: { totalFee: 1000 },
-  //       appArgs: [],
-  //       accounts: [escrow.address] //  AppAccounts
-  //     },
-  //     {
-  //       type: types.TransactionType.TransferAlgo,
-  //       sign: types.SignType.LogicSignature,
-  //       fromAccount: escrow.account,
-  //       toAccountAddr: donor.address,
-  //       amountMicroAlgos: 0,
-  //       lsig: escrowLsig,
-  //       payFlags: { totalFee: 1000, closeRemainderTo: fundReceiver.address }
-  //     }
-  //   ];
-  //   // verify app is present before delete
-  //   const app = runtime.getApp(applicationId);
-  //   assert.isDefined(app);
-  //
-  //   runtime.executeTx(deleteTxGroup);
-  //
-  //   // app should be deleted now
-  //   try {
-  //     runtime.getApp(applicationId);
-  //   } catch (error) {
-  //     console.log('[Expected: app does not exist] ', error.message);
-  //   }
-  // });
 });

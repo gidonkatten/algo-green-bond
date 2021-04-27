@@ -36,7 +36,7 @@ TEAL_APPROVAL_PROG="../../generated-src/greenBondApproval.teal"
 TEAL_CLEAR_PROG="../../generated-src/greenBondClear.teal"
 
 GLOBAL_BYTESLICES=2
-GLOBAL_INTS=8
+GLOBAL_INTS=9
 LOCAL_BYTESLICES=0
 LOCAL_INTS=2
 

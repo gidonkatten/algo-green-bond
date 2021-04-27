@@ -11,13 +11,13 @@ def contract(args):
         App.globalPut(Bytes("StartBuyDate"), Btoi(Txn.application_args[1])),
         App.globalPut(Bytes("EndBuyDate"), Btoi(Txn.application_args[2])),
         App.globalPut(Bytes("BondLength"), Btoi(Txn.application_args[3])),  # no of 6 month periods
-        App.globalPut(Bytes("BondID"), Btoi(Txn.application_args[4])),
+        App.globalPut(Bytes("BondId"), Btoi(Txn.application_args[4])),
         App.globalPut(Bytes("BondCost"), Btoi(Txn.application_args[5])),
         App.globalPut(Bytes("BondCouponPaymentValue"), Btoi(Txn.application_args[6])),
         App.globalPut(Bytes("BondPrincipal"), Btoi(Txn.application_args[7])),
         App.globalPut(Bytes("MaturityDate"), Add(
             App.globalGet(Bytes("EndBuyDate")),
-            Mul(Int(args["SIX_MONTH_PERIOD"]), App.globalGet(Bytes("BondLength")))
+            Int(args["SIX_MONTH_PERIOD"]) * App.globalGet(Bytes("BondLength"))
         )),
         Int(1)
     ])
@@ -46,7 +46,7 @@ def contract(args):
         Gtxn[1].type_enum() == TxnType.AssetTransfer,
         Gtxn[1].asset_sender() == Gtxn[1].sender(),
         Gtxn[1].asset_receiver() == Txn.sender(),
-        Gtxn[1].xfer_asset() == App.globalGet(Bytes("BondID"))
+        Gtxn[1].xfer_asset() == App.globalGet(Bytes("BondId"))
     )
     # 2. transfer of algos from buyer to bond contract account (fee of tx1)
     buy_fee_transfer = And(
@@ -61,13 +61,12 @@ def contract(args):
         Gtxn[3].sender() == Txn.sender(),
         Gtxn[3].asset_receiver() == App.globalGet(Bytes("IssuerAddr")),
         Gtxn[3].xfer_asset() == Int(args["STABLECOIN_ID"]),
-        Gtxn[3].asset_amount() == Mul(Gtxn[1].asset_amount(), App.globalGet(Bytes("BondCost")))
+        Gtxn[3].asset_amount() == (Gtxn[1].asset_amount() * App.globalGet(Bytes("BondCost")))
     )
     # verify in buy period
     in_buy_period = And(
         Global.latest_timestamp() >= App.globalGet(Bytes("StartBuyDate")),
         Global.latest_timestamp() <= App.globalGet(Bytes("EndBuyDate"))
-
     )
     # Combine
     buy_verify = And(
@@ -83,7 +82,11 @@ def contract(args):
         App.localPut(
             Int(0),
             Bytes("NoOfBondsOwned"),
-            Add(App.localGet(Int(0), Bytes("NoOfBondsOwned")), Gtxn[1].asset_amount())
+            App.localGet(Int(0), Bytes("NoOfBondsOwned")) + Gtxn[1].asset_amount()
+        ),
+        App.globalPut(
+            Bytes("NoOfBondsInCirculation"),
+            App.globalGet(Bytes("NoOfBondsInCirculation")) + Gtxn[1].asset_amount()
         ),
         Int(1)
     ])
@@ -96,7 +99,7 @@ def contract(args):
         Gtxn[1].type_enum() == TxnType.AssetTransfer,
         Gtxn[1].asset_sender() == Txn.sender(),
         Gtxn[1].asset_receiver() == Txn.accounts[1],
-        App.globalGet(Bytes("BondID")) == Gtxn[1].xfer_asset()
+        App.globalGet(Bytes("BondId")) == Gtxn[1].xfer_asset()
     )
     # 2. transfer of algos from sender to bond contract account (fee of tx1)
     trade_fee_transfer = And(
@@ -137,7 +140,7 @@ def contract(args):
         App.localPut(
             Int(1),
             Bytes("NoOfBondsOwned"),
-            Add(App.localGet(Int(1), Bytes("NoOfBondsOwned")), Gtxn[1].asset_amount())
+            App.localGet(Int(1), Bytes("NoOfBondsOwned")) + Gtxn[1].asset_amount()
         ),
         Int(1)
     ])
@@ -169,10 +172,7 @@ def contract(args):
     # verify that the installment time has passed:
     after_installment_date = Global.latest_timestamp() >= Add(
         App.globalGet(Bytes("EndBuyDate")),
-        Mul(
-            Int(args["SIX_MONTH_PERIOD"]),
-            new_num_installments_payed.load()
-        )
+        Int(args["SIX_MONTH_PERIOD"]) * new_num_installments_payed.load()
     )
     has_coupon = App.globalGet(Bytes("BondCouponPaymentValue")) > Int(0)
     # Combine
@@ -187,7 +187,7 @@ def contract(args):
     # Update how many bond coupon payments
     on_claim_coupon = Seq([
         new_num_installments_payed.store(
-            Add(App.localGet(Int(0), Bytes("NoOfBondCouponPayments")), Int(1))
+           App.localGet(Int(0), Bytes("NoOfBondCouponPayments")) + Int(1)
         ),
         Assert(claim_coupon_verify),
         App.localPut(
@@ -205,7 +205,7 @@ def contract(args):
         Gtxn[1].type_enum() == TxnType.AssetTransfer,
         Gtxn[1].asset_sender() == Txn.sender(),
         Gtxn[1].asset_receiver() == Gtxn[1].sender(),
-        Gtxn[1].xfer_asset() == App.globalGet(Bytes("BondID")),
+        Gtxn[1].xfer_asset() == App.globalGet(Bytes("BondId")),
         Gtxn[1].asset_amount() == App.localGet(Int(0), Bytes("NoOfBondsOwned")),
         Gtxn[1].asset_close_to() == Gtxn[1].sender()
     )
@@ -215,7 +215,7 @@ def contract(args):
         Gtxn[2].sender() == App.globalGet(Bytes("StablecoinEscrowAddr")),
         Gtxn[2].asset_receiver() == Txn.sender(),
         Gtxn[2].xfer_asset() == Int(args["STABLECOIN_ID"]),
-        Gtxn[2].asset_amount() == Mul(Gtxn[1].asset_amount(), App.globalGet(Bytes("BondPrincipal")))
+        Gtxn[2].asset_amount() == (Gtxn[1].asset_amount() * App.globalGet(Bytes("BondPrincipal")))
     )
     # 3. transfer of algos from sender to contract account (fee of tx1)
     claim_principal_fee_transfer1 = And(
@@ -253,6 +253,10 @@ def contract(args):
             Int(0),
             Bytes("NoOfBondsOwned"),
             Int(0)
+        ),
+        App.globalPut(
+            Bytes("NoOfBondsInCirculation"),
+            App.globalGet(Bytes("NoOfBondsInCirculation")) - Gtxn[1].asset_amount()
         ),
         Int(1)
     ])
