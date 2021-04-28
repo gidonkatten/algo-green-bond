@@ -36,13 +36,25 @@ echo "Stablecoin Stateless Contract Address = ${STABLECOIN_STATELESS_ADDRESS}"
 
 BOND_ID=1
 STABLECOIN_ID=2
-APP_ID=3
+APP_ID=10
+
+NUM_BONDS=3
+BOND_COST=50000000 # $50.000000
+TOTAL_COST=$(($NUM_BONDS * $BOND_COST))
+
+# need to opt in second account to new bond, stablecoin and app
+${gcmd2} asset send -a 0 -f ${ACCOUNT2} -t ${ACCOUNT2} --assetid ${BOND_ID}
+${gcmd2} asset send -a 0 -f ${ACCOUNT2} -t ${ACCOUNT2} --assetid ${STABLECOIN_ID}
+${gcmd2} app optin --app-id ${APP_ID} --from ${ACCOUNT2}
+
+# send $1000 to second account so has funds to buy bond
+${gcmd} asset send -a 1000000000 -f ${ACCOUNT} -t ${ACCOUNT2} --assetid ${STABLECOIN_ID}
 
 # create transactions
 ${gcmd2} app call --app-id ${APP_ID} --app-arg "str:buy" --from ${ACCOUNT2} --out=unsignedtx0.tx
-${gcmd2} asset send --from=${BOND_STATELESS_ADDRESS} --to=${ACCOUNT2} --assetid ${BOND_ID} --clawback ${BOND_STATELESS_ADDRESS} --fee=1000 --amount=3 --out=unsignedtx1.tx
+${gcmd2} asset send --from=${BOND_STATELESS_ADDRESS} --to=${ACCOUNT2} --assetid ${BOND_ID} --clawback ${BOND_STATELESS_ADDRESS} --fee=1000 --amount=${NUM_BONDS} --out=unsignedtx1.tx
 ${gcmd2} clerk send --from=${ACCOUNT2} --to=${BOND_STATELESS_ADDRESS} --fee=1000 --amount=1000 --out=unsignedtx2.tx
-${gcmd2} asset send --from=${ACCOUNT2} --to=${ACCOUNT} --assetid ${STABLECOIN_ID} --fee=1000 --amount=150000000 --out=unsignedtx3.tx
+${gcmd2} asset send --from=${ACCOUNT2} --to=${ACCOUNT} --assetid ${STABLECOIN_ID} --fee=1000 --amount=${TOTAL_COST} --out=unsignedtx3.tx
 # combine transactions
 cat unsignedtx0.tx unsignedtx1.tx unsignedtx2.tx unsignedtx3.tx > combinedtransactions.tx
 # group transactions

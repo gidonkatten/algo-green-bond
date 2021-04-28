@@ -39,7 +39,7 @@ if __name__ == "__main__":
     params = {
         "BOND_ID": 1,
         "LV": 1500,
-        "APP_ID": 3
+        "APP_ID": 10
     }
 
     print(compileTeal(contract(params), Mode.Signature, version=2))

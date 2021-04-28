@@ -1,8 +1,11 @@
 from pyteal import *
 
-def contract() :
+
+def contract(args):
     return Int(1)
 
-if __name__ == "__main__":
-    print(compileTeal(contract(), Mode.Signature))   # For Stateful contract, use Mode.Application
 
+if __name__ == "__main__":
+    params = {}
+
+    print(compileTeal(contract(params), Mode.Application, version=2))

@@ -14,25 +14,11 @@ WALLET=$1
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
 gcmd="goal -d ../../net1/Primary"
-gcmd2="goal -d ../../net1/Node"
 
 ACCOUNT=$(${gcmd} account list|awk '{ print $3 }'|head -n 1)
-ACCOUNT2=$(${gcmd2} account list|awk '{ print $3 }'|head -n 1)
-
-# create asset
-BOND_ID=$(
-  ${gcmd} asset create \
-    --creator ${ACCOUNT} \
-    --total 5 \
-    --unitname bond \
-    --decimals 0 \
-    --defaultfrozen=true \
-    | awk '{ print $6 }' | tail -n 1
-)
-echo "Bond ID = ${BOND_ID}"
 
 # create app
-TEAL_APPROVAL_PROG="../../generated-src/greenBondApproval.teal"
+TEAL_APPROVAL_PROG="../../generated-src/initialStateful.teal"
 TEAL_CLEAR_PROG="../../generated-src/greenBondClear.teal"
 
 GLOBAL_BYTESLICES=2
@@ -46,8 +32,9 @@ BOND_PRINCIPAL=100000000 # $100.000000
 SETUP_LENGTH=20 # seconds
 BUY_LENGTH=100 # seconds
 BOND_LENGTH=2 # no of 6 month periods ie 1 year
-CURRRENT_DATE=$(date '+%s')
-START_BUY_DATE=$(($CURRRENT_DATE + $SETUP_LENGTH))
+BOND_ID=1
+CURRENT_DATE=$(date '+%s')
+START_BUY_DATE=$(($CURRENT_DATE + $SETUP_LENGTH))
 END_BUY_DATE=$(($START_BUY_DATE + $BUY_LENGTH))
 
 ${gcmd} app create --creator ${ACCOUNT} \

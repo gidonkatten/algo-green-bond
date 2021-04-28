@@ -57,38 +57,12 @@ def contract(args):
         Gtxn[4].amount() >= Gtxn[2].fee(),
     )
 
-    # Verify 8 args passed and store them
-    on_creation = Seq([
-        Assert(Txn.application_args.length() == Int(8)),
-        App.globalPut(Bytes("IssuerAddr"), Txn.application_args[0]),
-        App.globalPut(Bytes("StartBuyDate"), Btoi(Txn.application_args[1])),
-        App.globalPut(Bytes("EndBuyDate"), Btoi(Txn.application_args[2])),
-        App.globalPut(Bytes("BondLength"), Btoi(Txn.application_args[3])),  # no of 6 month periods
-        App.globalPut(Bytes("BondId"), Btoi(Txn.application_args[4])),
-        App.globalPut(Bytes("BondCost"), Btoi(Txn.application_args[5])),
-        App.globalPut(Bytes("BondCouponPaymentValue"), Btoi(Txn.application_args[6])),  # 0 if no coupon
-        App.globalPut(Bytes("BondPrincipal"), Btoi(Txn.application_args[7])),
-        App.globalPut(Bytes("MaturityDate"), Add(
-            App.globalGet(Bytes("EndBuyDate")),
-            Int(args["SIX_MONTH_PERIOD"]) * App.globalGet(Bytes("BondLength"))
-        )),
-        Int(1)
-    ])
-
     # TODO
     on_closeout = Int(0)
 
     # Approve if only transaction in group
     on_opt_in = Seq([
         Assert(Global.group_size() == Int(1)),
-        Int(1)
-    ])
-
-    # If before start date then creator can set the stablecoin contract account address
-    on_set_stablecoin_escrow = Seq([
-        Assert(Global.latest_timestamp() < App.globalGet(Bytes("StartBuyDate"))),
-        # Assert(Txn.sender() == App.globalGet(Bytes("CreatorAddress"))), # TODO: Add for TEAL3
-        App.globalPut(Bytes("StablecoinEscrowAddr"), Txn.application_args[1]),
         Int(1)
     ])
 
@@ -192,7 +166,7 @@ def contract(args):
     # 2. transfer of USDC from stablecoin contract account to owner
     claim_coupon_stablecoin_transfer = And(
         Gtxn[2].type_enum() == TxnType.AssetTransfer,
-        Gtxn[2].sender() == App.globalGet(Bytes("StablecoinEscrowAddr")),
+        Gtxn[2].sender() == Bytes(args["STABLECOIN_ESCROW_ADDR"]),
         Gtxn[2].asset_receiver() == Txn.sender(),
         Gtxn[2].xfer_asset() == Int(args["STABLECOIN_ID"]),
         Gtxn[2].asset_amount() == Mul(
@@ -215,7 +189,7 @@ def contract(args):
     # Update how many bond coupon payments locally and globally
     on_claim_coupon = Seq([
         stablecoin_escrow_balance,
-        Assert(App.globalGet(Bytes("StablecoinEscrowAddr")) == Txn.accounts[1]),
+        Assert(Bytes(args["STABLECOIN_ESCROW_ADDR"]) == Txn.accounts[1]),
         Assert(Not(has_defaulted)),
         sender_bond_balance,
         Assert(claim_coupon_verify),
@@ -246,7 +220,7 @@ def contract(args):
     # 2. transfer of USDC from stablecoin contract account to sender (NoOfBonds * BondPrincipal)
     claim_principal_stablecoin_transfer = And(
         Gtxn[2].type_enum() == TxnType.AssetTransfer,
-        Gtxn[2].sender() == App.globalGet(Bytes("StablecoinEscrowAddr")),
+        Gtxn[2].sender() == Bytes(args["STABLECOIN_ESCROW_ADDR"]),
         Gtxn[2].asset_receiver() == Txn.sender(),
         Gtxn[2].xfer_asset() == Int(args["STABLECOIN_ID"]),
         Gtxn[2].asset_amount() == (Gtxn[1].asset_amount() * App.globalGet(Bytes("BondPrincipal")))
@@ -273,7 +247,7 @@ def contract(args):
     #
     on_claim_principal = Seq([
         stablecoin_escrow_balance,
-        Assert(App.globalGet(Bytes("StablecoinEscrowAddr")) == Txn.accounts[1]),
+        Assert(Bytes(args["STABLECOIN_ESCROW_ADDR"]) == Txn.accounts[1]),
         Assert(Not(has_defaulted)),
         sender_bond_balance,
         Assert(claim_principal_verify),
@@ -292,7 +266,7 @@ def contract(args):
     # 2. transfer of USDC from stablecoin contract account to sender (proportional to what they are owed)
     claim_default_stablecoin_transfer = And(
         Gtxn[2].type_enum() == TxnType.AssetTransfer,
-        Gtxn[2].sender() == App.globalGet(Bytes("StablecoinEscrowAddr")),
+        Gtxn[2].sender() == Bytes(args["STABLECOIN_ESCROW_ADDR"]),
         Gtxn[2].asset_receiver() == Txn.sender(),
         Gtxn[2].xfer_asset() == Int(args["STABLECOIN_ID"]),
         Gtxn[2].asset_amount() == Int(1)  # TODO
@@ -313,7 +287,7 @@ def contract(args):
     #
     on_claim_default = Seq([
         stablecoin_escrow_balance,
-        Assert(App.globalGet(Bytes("StablecoinEscrowAddr")) == Txn.accounts[1]),
+        Assert(Bytes(args["STABLECOIN_ESCROW_ADDR"]) == Txn.accounts[1]),
         Assert(has_defaulted),
         sender_bond_balance,
         Assert(claim_default_verify),
@@ -324,15 +298,14 @@ def contract(args):
         Int(1)
     ])
 
+    # Can ignore creation since this program is used in update transaction
     # Fail on DeleteApplication and UpdateApplication
     # Else jump to corresponding handler
     program = Cond(
-        [Txn.application_id() == Int(0), on_creation],
         [Txn.on_completion() == OnComplete.DeleteApplication, Int(0)],
         [Txn.on_completion() == OnComplete.UpdateApplication, Int(0)],
         [Txn.on_completion() == OnComplete.CloseOut, on_closeout],
         [Txn.on_completion() == OnComplete.OptIn, on_opt_in],
-        [Txn.application_args[0] == Bytes("set_stablecoin_escrow"), on_set_stablecoin_escrow],
         [Txn.application_args[0] == Bytes("buy"), on_buy],
         [Txn.application_args[0] == Bytes("trade"), on_trade],
         [Txn.application_args[0] == Bytes("claim_coupon"), on_claim_coupon],
@@ -347,6 +320,7 @@ def contract(args):
 if __name__ == "__main__":
     params = {
         "STABLECOIN_ID": 2,
-        "SIX_MONTH_PERIOD": 15768000
+        "SIX_MONTH_PERIOD": 15768000,
+        "STABLECOIN_ESCROW_ADDR": "CEKMFPU2TIYHSWDAAMH7X2YW7QNQ535L2T5EMLSRL4KWJV2YM6Q6LSC56E"
     }
     print(compileTeal(contract(params), Mode.Application, version=2))
