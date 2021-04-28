@@ -8,10 +8,9 @@ def contract(args):
 
     # Used for DEFAULT, CLAIM COUPON and CLAIM PRINCIPAL
     stablecoin_escrow_balance = AssetHolding.balance(Int(1), Int(args["STABLECOIN_ID"]))
-    # max of BondLength and no of six month periods passed (rounded down)
     coupon_round = If(
         Global.latest_timestamp() > App.globalGet(Bytes("MaturityDate")),
-        App.globalGet(Bytes("BondLength")),
+        App.globalGet(Bytes("BondLength")),  # max BondLength
         Div(
             Global.latest_timestamp() - App.globalGet(Bytes("EndBuyDate")),
             Int(args["SIX_MONTH_PERIOD"])
@@ -24,14 +23,39 @@ def contract(args):
             App.globalGet(Bytes("TotalBondCouponPayments"))
         )
     )
-    # 0 if not yet maturity
     remaining_principal_value_owed_now = If(
         Global.latest_timestamp() > App.globalGet(Bytes("MaturityDate")),
         App.globalGet(Bytes("BondPrincipal")) * App.globalGet(Bytes("NoOfBondsInCirculation")),
-        Int(0)
+        Int(0)  # 0 if not yet maturity
     )
-    has_defaulted = (remaining_coupon_value_owed_now + remaining_principal_value_owed_now) > \
-        stablecoin_escrow_balance.value()
+    remaining_total_value_owed_now = remaining_coupon_value_owed_now + remaining_principal_value_owed_now
+    has_defaulted = remaining_total_value_owed_now > stablecoin_escrow_balance.value()
+
+    # Common fee transactions
+    tx1_pay_fee_of_tx2 = And(
+        Gtxn[1].type_enum() == TxnType.Payment,
+        Gtxn[1].sender() == Txn.sender(),
+        Gtxn[1].receiver() == Gtxn[2].sender(),
+        Gtxn[1].amount() >= Gtxn[2].fee(),
+    )
+    tx2_pay_fee_of_tx1 = And(
+        Gtxn[2].type_enum() == TxnType.Payment,
+        Gtxn[2].sender() == Txn.sender(),
+        Gtxn[2].receiver() == Gtxn[1].sender(),
+        Gtxn[2].amount() >= Gtxn[1].fee(),
+    )
+    tx3_pay_fee_of_tx1 = And(
+        Gtxn[3].type_enum() == TxnType.Payment,
+        Gtxn[3].sender() == Txn.sender(),
+        Gtxn[3].receiver() == Gtxn[1].sender(),
+        Gtxn[3].amount() >= Gtxn[1].fee(),
+    )
+    tx4_pay_fee_of_tx2 = And(
+        Gtxn[4].type_enum() == TxnType.Payment,
+        Gtxn[4].sender() == Txn.sender(),
+        Gtxn[4].receiver() == Gtxn[2].sender(),
+        Gtxn[4].amount() >= Gtxn[2].fee(),
+    )
 
     # Verify 8 args passed and store them
     on_creation = Seq([
@@ -78,12 +102,7 @@ def contract(args):
         Gtxn[1].xfer_asset() == App.globalGet(Bytes("BondId"))
     )
     # 2. transfer of algos from buyer to bond contract account (fee of tx1)
-    buy_fee_transfer = And(
-        Gtxn[2].type_enum() == TxnType.Payment,
-        Gtxn[2].sender() == Txn.sender(),
-        Gtxn[2].receiver() == Gtxn[1].sender(),
-        Gtxn[2].amount() >= Gtxn[1].fee(),
-    )
+    buy_fee_transfer = tx2_pay_fee_of_tx1
     # 3. transfer of USDC from buyer to issuer account (NoOfBonds * BondCost)
     buy_stablecoin_transfer = And(
         Gtxn[3].type_enum() == TxnType.AssetTransfer,
@@ -126,12 +145,7 @@ def contract(args):
         App.globalGet(Bytes("BondId")) == Gtxn[1].xfer_asset()
     )
     # 2. transfer of algos from sender to bond contract account (fee of tx1)
-    trade_fee_transfer = And(
-        Gtxn[2].type_enum() == TxnType.Payment,
-        Gtxn[2].sender() == Txn.sender(),
-        Gtxn[2].receiver() == Gtxn[1].sender(),
-        Gtxn[2].amount() >= Gtxn[1].fee(),
-    )
+    trade_fee_transfer = tx2_pay_fee_of_tx1
     # 3,4,... Optional (e.g for payment when transferring bonds)
     in_trade_window = And(
         Global.latest_timestamp() > App.globalGet(Bytes("EndBuyDate")),
@@ -174,12 +188,7 @@ def contract(args):
     # NOTE: StablecoinEscrow account is specified in account array pos 1
     # 0. call to this contract (verified below)
     # 1. transfer of algos from buyer to stablecoin contract account (fee of tx2)
-    claim_coupon_fee_transfer = And(
-        Gtxn[1].type_enum() == TxnType.Payment,
-        Gtxn[1].sender() == Txn.sender(),
-        Gtxn[1].receiver() == App.globalGet(Bytes("StablecoinEscrowAddr")),
-        Gtxn[1].amount() >= Gtxn[2].fee(),
-    )
+    claim_coupon_fee_transfer = tx1_pay_fee_of_tx2
     # 2. transfer of USDC from stablecoin contract account to owner
     claim_coupon_stablecoin_transfer = And(
         Gtxn[2].type_enum() == TxnType.AssetTransfer,
@@ -243,19 +252,9 @@ def contract(args):
         Gtxn[2].asset_amount() == (Gtxn[1].asset_amount() * App.globalGet(Bytes("BondPrincipal")))
     )
     # 3. transfer of algos from sender to contract account (fee of tx1)
-    claim_principal_fee_transfer1 = And(
-        Gtxn[3].type_enum() == TxnType.Payment,
-        Gtxn[3].sender() == Txn.sender(),
-        Gtxn[3].receiver() == Gtxn[1].sender(),
-        Gtxn[3].amount() >= Gtxn[1].fee(),
-    )
+    claim_principal_fee_transfer1 = tx3_pay_fee_of_tx1
     # 4. transfer of algos from sender to contract account (fee of tx2)
-    claim_principal_fee_transfer2 = And(
-        Gtxn[4].type_enum() == TxnType.Payment,
-        Gtxn[4].sender() == Txn.sender(),
-        Gtxn[4].receiver() == Gtxn[2].sender(),
-        Gtxn[4].amount() >= Gtxn[2].fee(),
-    )
+    claim_principal_fee_transfer2 = tx4_pay_fee_of_tx2
     # verify have collected all coupon payments or no coupons exists
     collected_all_coupons = Or(
         App.globalGet(Bytes("BondLength")) == App.localGet(Int(0), Bytes("NoOfBondCouponPayments")),
@@ -278,6 +277,46 @@ def contract(args):
         Assert(Not(has_defaulted)),
         sender_bond_balance,
         Assert(claim_principal_verify),
+        App.globalPut(
+            Bytes("NoOfBondsInCirculation"),
+            App.globalGet(Bytes("NoOfBondsInCirculation")) - Gtxn[1].asset_amount()
+        ),
+        Int(1)
+    ])
+
+    # CLAIM DEFAULT: verify there are four transactions in atomic transfer
+    # NOTE: StablecoinEscrow account is specified in account array pos 1
+    # 0. call to this contract (verified below)
+    # 1. transfer of bond from sender to bond contract account (all bonds owned + opting out)
+    claim_default_bond_transfer = claim_principal_bond_transfer
+    # 2. transfer of USDC from stablecoin contract account to sender (proportional to what they are owed)
+    claim_default_stablecoin_transfer = And(
+        Gtxn[2].type_enum() == TxnType.AssetTransfer,
+        Gtxn[2].sender() == App.globalGet(Bytes("StablecoinEscrowAddr")),
+        Gtxn[2].asset_receiver() == Txn.sender(),
+        Gtxn[2].xfer_asset() == Int(args["STABLECOIN_ID"]),
+        Gtxn[2].asset_amount() == Int(1)  # TODO
+    )
+    # 3. transfer of algos from sender to contract account (fee of tx1)
+    claim_default_fee_transfer1 = tx3_pay_fee_of_tx1
+    # 4. transfer of algos from sender to contract account (fee of tx2)
+    claim_default_fee_transfer2 = tx4_pay_fee_of_tx2
+    # Combine
+    claim_default_verify = And(
+        Global.group_size() == Int(5),
+        claim_default_bond_transfer,
+        claim_default_stablecoin_transfer,
+        claim_default_fee_transfer1,
+        claim_default_fee_transfer2,
+        Global.latest_timestamp() >= App.globalGet(Bytes("MaturityDate"))
+    )
+    #
+    on_claim_default = Seq([
+        stablecoin_escrow_balance,
+        Assert(App.globalGet(Bytes("StablecoinEscrowAddr")) == Txn.accounts[1]),
+        Assert(has_defaulted),
+        sender_bond_balance,
+        Assert(claim_default_verify),
         App.globalPut(
             Bytes("NoOfBondsInCirculation"),
             App.globalGet(Bytes("NoOfBondsInCirculation")) - Gtxn[1].asset_amount()
