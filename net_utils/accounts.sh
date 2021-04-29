@@ -1,18 +1,24 @@
 gcmd="goal -d ../net1/Primary"
-gcmd2="goal -d ../net1/Node"
 
-ACCOUNT=$(${gcmd} account list|awk '{ print $3 }'|head -n 1)
-ACCOUNT2=$(${gcmd2} account list|awk '{ print $3 }'|head -n 1)
+MASTER=$(${gcmd} account list|awk '{ print $3 }'|tail -1)
+ISSUER=$(${gcmd} account list|awk '{ print $3 }'|head -1)
+INVESTOR=$(${gcmd} account list|awk '{ print $3 }'|head -2|tail -1)
 
-echo "Primary Account:"
-${gcmd} account balance -a=${ACCOUNT}
-${gcmd} account info -a=${ACCOUNT}
+echo "Master Account Address = ${MASTER}"
+${gcmd} account balance -a=${MASTER}
+${gcmd} account info -a=${MASTER}
 
 printf "\n\n\n"
 
-echo "Buyer Account:"
-${gcmd} account balance -a=${ACCOUNT2}
-${gcmd} account info -a=${ACCOUNT2}
+echo "Issuer Account Address = ${ISSUER}"
+${gcmd} account balance -a=${ISSUER}
+${gcmd} account info -a=${ISSUER}
+
+printf "\n\n\n"
+
+echo "Investor Account Address = ${INVESTOR}"
+${gcmd} account balance -a=${INVESTOR}
+${gcmd} account info -a=${INVESTOR}
 
 printf "\n\n\n"
 

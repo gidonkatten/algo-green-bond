@@ -15,14 +15,16 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
 gcmd="goal -d ../../net1/Primary"
 
-ACCOUNT=$(${gcmd} account list|awk '{ print $3 }'|head -n 1)
+MASTER=$(${gcmd} account list|awk '{ print $3 }'|tail -1)
+ISSUER=$(${gcmd} account list|awk '{ print $3 }'|head -1)
+INVESTOR=$(${gcmd} account list|awk '{ print $3 }'|head -2|tail -1)
 
-APP_ID=10
+APP_ID=12
 
 # update app
 NEW_TEAL_APPROVAL_PROG="../../generated-src/greenBondApproval.teal"
 TEAL_CLEAR_PROG="../../generated-src/greenBondClear.teal"
-${gcmd} app update --app-id ${APP_ID} --approval-prog $NEW_TEAL_APPROVAL_PROG --clear-prog $TEAL_CLEAR_PROG --from ${ACCOUNT}
+${gcmd} app update --app-id ${APP_ID} --approval-prog $NEW_TEAL_APPROVAL_PROG --clear-prog $TEAL_CLEAR_PROG --from ${MASTER}
 
 # Read global state of contract
-${gcmd} app read --app-id ${APP_ID} --guess-format --global --from ${ACCOUNT}
+${gcmd} app read --app-id ${APP_ID} --guess-format --global --from ${MASTER}

@@ -12,7 +12,7 @@ let accounts = mkAccounts([
     mnemonic: "engage load empty enlist script live rookie spin half drum matter power mango bless piano board skill normal airport fabric nephew bring barrel ability aim"
   },
   {
-    name: "buyer",
+    name: "investor",
     addr: "FCRSMPKRY5JPS4IQ2M7P4JRRIJSHRXL5S3NFTGHYP5GQD2XERNYUWEXG54",
     mnemonic: "group few acquire lab advance measure impact follow grocery behave fire say renew scare frequent draw black damp shed advance piece cancel inject abstract deliver"
   }

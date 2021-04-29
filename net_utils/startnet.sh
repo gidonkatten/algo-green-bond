@@ -12,16 +12,10 @@ echo
 echo "### Checking node status"
 goal network status -r ../net1
 echo "### Importing root keys"
-NODEKEY=$(goal account list -d ../net1/Node |  awk '{print $2}')
-PRIMKEY=$(goal account list -d ../net1/Primary | awk '{print $2}')
-
+gcmd="goal -d ../net1/Primary"
+NODEKEY=$(${gcmd} account list |  awk '{print $2}')
 echo "Imported ${NODEKEY}"
-echo "Imported ${PRIMKEY}"
 
-begin_date=$(date)
-s=20
-echo ${begin_date}
-bd_seconds=$(date '+%s')
-echo ${bd_seconds}
-num=$(( $bd_seconds + $s ))
-echo ${num}
+echo "### Importing accounts and funding them"
+${gcmd} account import -m "engage load empty enlist script live rookie spin half drum matter power mango bless piano board skill normal airport fabric nephew bring barrel ability aim"
+${gcmd} account import -m "group few acquire lab advance measure impact follow grocery behave fire say renew scare frequent draw black damp shed advance piece cancel inject abstract deliver"

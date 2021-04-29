@@ -35,9 +35,9 @@ def contract(args):
 
 if __name__ == "__main__":
     params = {
-        "STABLECOIN_ID": 2,
         "LV": 1500,
-        "APP_ID": 10
+        "APP_ID": 12,
+        "STABLECOIN_ID": 2,
     }
 
     print(compileTeal(contract(params), Mode.Signature, version=2))
