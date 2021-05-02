@@ -1,20 +1,21 @@
 const {
   addressToPk,
   getProgram,
-  stringToBytes,
-  uint64ToBigEndian
+  stringToBytes
 } = require('@algo-builder/algob');
 const { Runtime, AccountStore, types } = require('@algo-builder/runtime');
 const { assert } = require('chai');
 
 const MIN_BALANCE = 10e6; // 10 algo
-const BOND_COST = 50e6; // $50
-const BOND_COUPON_PAYMENT_VALUE = 2.5e6; // $2.5
-const BOND_LENGTH = 2; // 1 year ie 2 six month periods
-const BOND_PRINCIPAL = 100e6; // $100
-const START_BUY_DATE = 50;
-const END_BUY_DATE = 100;
+
 const SIX_MONTH_PERIOD = 15768000;
+const BOND_LENGTH = 2; // 1 year ie 2 six month periods
+const START_BUY_DATE = 50;
+const END_BUY_DATE = START_BUY_DATE + 50;
+const MATURITY_DATE = END_BUY_DATE + (SIX_MONTH_PERIOD * BOND_LENGTH);
+const BOND_COST = 50000000; // $50
+const BOND_COUPON = 2500000; // $2.5
+const BOND_PRINCIPAL = 100000000; // $100
 
 const masterAddr = "A6BDLTPR4IEIZG4CCUGEXVMZSXTFO7RWNSOWHBWZL3CX2CLWTKW5FF4SE4";
 const issuerAddr = "EMO2JEPSRWNAJGR62S75GQ4ICOKVNI46AYRERZPJOWYUFEYEZJ6BU5GMXY";
@@ -30,17 +31,19 @@ describe('Green Bond Tests', function () {
   let stablecoinEscrow, stablecoinEscrowLsig; // initialized later
 
   let runtime;
-  let applicationId;
+  let mainAppId;
   let creationFlags;
   let bondId;
   let bondDef;
   let stablecoinId;
   let stablecoinDef;
-  const approvalProgram = getProgram('greenBondApproval.py');
+
+  const initialApprovalProgram = getProgram('initialStateful.py');
+  let updatedApprovalProgram;
   const clearProgram = getProgram('greenBondClear.py');
 
-  const getGlobal = (key) => runtime.getGlobalState(applicationId, key);
-  const getLocal = (addr, key) => runtime.getLocalState(applicationId, addr, key);
+  const getGlobal = (key) => runtime.getGlobalState(mainAppId, key);
+  const getLocal = (addr, key) => runtime.getLocalState(mainAppId, addr, key);
 
   // fetch latest account state
   function syncAccounts () {
@@ -74,21 +77,10 @@ describe('Green Bond Tests', function () {
   }
 
   /**
-   * This function creates app and sets app id to 3
+   * This function creates app and sets app id to 11
    */
-  function createApp(params) {
-    const args = {
-      startBuyDate: START_BUY_DATE,
-      endBuyDate: END_BUY_DATE,
-      bondLength: BOND_LENGTH,
-      bondId,
-      bondCost: BOND_COST,
-      bondCouponPaymentValue: BOND_COUPON_PAYMENT_VALUE,
-      bondPrincipal: BOND_PRINCIPAL,
-      ...params
-    }
-
-    runtime.appCounter = 2;
+  function createMainApp() {
+    runtime.appCounter = 11;
 
     creationFlags = {
       sender: master.account,
@@ -97,43 +89,41 @@ describe('Green Bond Tests', function () {
       globalInts: 10,
       globalBytes: 2
     };
-
-    const creationArgs = [
-      addressToPk(issuer.address),
-      uint64ToBigEndian(BigInt(args.startBuyDate)),
-      uint64ToBigEndian(BigInt(args.endBuyDate)),
-      uint64ToBigEndian(BigInt(args.bondLength)),
-      uint64ToBigEndian(BigInt(args.bondId)),
-      uint64ToBigEndian(BigInt(args.bondCost)),
-      uint64ToBigEndian(BigInt(args.bondCouponPaymentValue)),
-      uint64ToBigEndian(BigInt(args.bondPrincipal))
-    ];
+    const creationArgs = [];
 
     // create application
-    applicationId = runtime.addApp(
+    mainAppId = runtime.addApp(
       { ...creationFlags, appArgs: creationArgs },
       {},
-      approvalProgram,
+      initialApprovalProgram,
       clearProgram
     );
 
-    assert.equal(applicationId, 3);
+
+    assert.equal(mainAppId, 12);
   }
 
   /**
-   * This function sets stablecoin escrow address in application global state
+   * This function updates main app from given addr
    */
-  function setStablecoinEscrowInApp() {
-    const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
-    runtime.executeTx({
-      type: types.TransactionType.CallNoOpSSC,
-      sign: types.SignType.SecretKey,
-      fromAccount: master.account,
-      appId: applicationId,
-      payFlags: {},
-      appArgs: [stringToBytes("set_stablecoin_escrow"), addressToPk(stablecoinEscrowAddress)]
-    })
+  function updateMainApp(addr, params) {
+    updatedApprovalProgram = getProgram('greenBondApproval.py', {
+      STABLECOIN_ESCROW_ADDR: stablecoinEscrow.address,
+      BOND_ESCROW_ADDR: bondEscrow.address,
+      SIX_MONTH_PERIOD: SIX_MONTH_PERIOD,
+      BOND_LENGTH: BOND_LENGTH, // 1 year ie 2 six month periods
+      START_BUY_DATE: START_BUY_DATE,
+      END_BUY_DATE: END_BUY_DATE,
+      MATURITY_DATE: MATURITY_DATE,
+      BOND_COST: BOND_COST, // $50
+      BOND_COUPON: BOND_COUPON, // $2.5
+      BOND_PRINCIPAL: BOND_PRINCIPAL,
+      ...params
+    });
+
+    runtime.updateApp(addr, mainAppId, updatedApprovalProgram, clearProgram, {}, {});
   }
+
   /**
    * This function buys bonds
    */
@@ -146,7 +136,7 @@ describe('Green Bond Tests', function () {
         type: types.TransactionType.CallNoOpSSC,
         sign: types.SignType.SecretKey,
         fromAccount: investor.account,
-        appId: applicationId,
+        appId: mainAppId,
         payFlags: {},
         appArgs: [stringToBytes('buy')]
       },
@@ -296,100 +286,54 @@ describe('Green Bond Tests', function () {
   });
 
   describe('Creation', function () {
-    it('should create bond stateful application', () => {
-      createApp({});
+    it('should create and update bond stateful application', () => {
+      createMainApp();
 
       // assert.deepEqual(getGlobal('Creator'), master.address); // TODO: Add when switch to version 3
-      assert.deepEqual(getGlobal('IssuerAddr'), addressToPk(issuer.address));
-      assert.deepEqual(getGlobal('StartBuyDate'), BigInt(START_BUY_DATE));
-      assert.deepEqual(getGlobal('EndBuyDate'), BigInt(END_BUY_DATE));
-      assert.deepEqual(getGlobal('BondLength'), BigInt(BOND_LENGTH));
-      assert.deepEqual(getGlobal('BondId'), BigInt(bondId));
-      assert.deepEqual(getGlobal('BondCost'), BigInt(BOND_COST));
-      assert.deepEqual(getGlobal('BondCouponPaymentValue'), BigInt(BOND_COUPON_PAYMENT_VALUE));
-      assert.deepEqual(getGlobal('BondPrincipal'), BigInt(BOND_PRINCIPAL));
-      assert.deepEqual(getGlobal('MaturityDate'), BigInt(END_BUY_DATE + SIX_MONTH_PERIOD * BOND_LENGTH));
+      assert.deepEqual(getGlobal('CreatorAddr'), addressToPk(master.address)); // TODO: Remove when switch to version 3
     });
   });
 
-  describe('Opt-in', function () {
-    it('should be able to opt-in to app', () => {
-      createApp({});
-      setStablecoinEscrowInApp();
+  describe('Update', function () {
+    it('creator can update app', () => {
+      createMainApp();
+      updateMainApp(masterAddr);
+    });
 
-      runtime.optInToApp(investor.address, applicationId, {}, {});
+
+    it('non creator cannot update app', () => {
+      createMainApp();
+
+      assert.throws(() => {
+        updateMainApp(investorAddr)
+      }, 'RUNTIME_ERR1007: Teal code rejected by logic');
+    });
+  });
+
+    describe('Opt-in', function () {
+    it('should be able to opt-in to app', () => {
+      createMainApp();
+      updateMainApp(masterAddr);
+
+      // verify not opted-in
+      assert.isUndefined(investor.getAppFromLocal(mainAppId));
+
+      // opt-in
+      runtime.optInToApp(investor.address, mainAppId, {}, {});
       syncAccounts();
 
       // verify opt-in
-      assert.isDefined(investor.getAppFromLocal(applicationId));
-    });
-  });
-
-  describe('set_stablecoin_escrow', function () {
-    it('creator can set stablecoin escrow address', () => {
-      createApp({});
-      setStablecoinEscrowInApp();
-
-      const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
-      assert.deepEqual(getGlobal('StablecoinEscrowAddr'), addressToPk(stablecoinEscrowAddress));
-    });
-
-    // TODO: Will pass when TEAL3
-    // it('non creator cannot set stablecoin escrow address', () => {
-    //   createApp({});
-    //
-    //   assert.throws(() => {
-    //     runtime.executeTx({
-    //       type: types.TransactionType.CallNoOpSSC,
-    //       sign: types.SignType.SecretKey,
-    //       fromAccount: investor.account,
-    //       appId: applicationId,
-    //       payFlags: {},
-    //       appArgs: [stringToBytes("set_stablecoin_escrow"), addressToPk(investor.address)]
-    //     })
-    //   }, 'RUNTIME_ERR1009: TEAL runtime encountered err opcode');
-    // });
-
-    it('creator cannot set stablecoin escrow address when START_BUY_DATE and later', () => {
-      createApp({});
-
-      // Set time to START_BUY_DATE
-      runtime.setRoundAndTimestamp(2, START_BUY_DATE)
-
-      assert.throws(() => {
-        runtime.executeTx({
-          type: types.TransactionType.CallNoOpSSC,
-          sign: types.SignType.SecretKey,
-          fromAccount: master.account,
-          appId: applicationId,
-          payFlags: {},
-          appArgs: [stringToBytes("set_stablecoin_escrow"), addressToPk(master.address)]
-        })
-      }, 'RUNTIME_ERR1009: TEAL runtime encountered err opcode');
-
-      // Set time to START_BUY_DATE + 1
-      runtime.setRoundAndTimestamp(3, START_BUY_DATE + 1)
-
-      assert.throws(() => {
-        runtime.executeTx({
-          type: types.TransactionType.CallNoOpSSC,
-          sign: types.SignType.SecretKey,
-          fromAccount: master.account,
-          appId: applicationId,
-          payFlags: {},
-          appArgs: [stringToBytes("set_stablecoin_escrow"), addressToPk(master.address)]
-        })
-      }, 'RUNTIME_ERR1009: TEAL runtime encountered err opcode');
+      assert.isDefined(investor.getAppFromLocal(mainAppId));
     });
   });
 
   describe('buy', function () {
 
-    it('should be able to buy bond after StartBuyDate and before EndBuyDate', () => {
+    it('should be able to buy bond', () => {
       // setup
-      createApp({});
-      setStablecoinEscrowInApp();
-      runtime.optInToApp(investor.address, applicationId, {}, {});
+      createMainApp();
+      updateMainApp(masterAddr);
+      runtime.optInToApp(investor.address, mainAppId, {}, {});
       runtime.setRoundAndTimestamp(3, START_BUY_DATE);
 
       const NUM_BONDS_BUYING = 3;
@@ -400,29 +344,27 @@ describe('Green Bond Tests', function () {
 
       // verify bought
       const afterStablecoinHolding = runtime.getAssetHolding(stablecoinId, investor.address);
-      const bondsInCirculation = getGlobal("NoOfBondsInCirculation");
       const bondsHolding = runtime.getAssetHolding(bondId, investor.address);
 
       assert.equal(afterStablecoinHolding.amount,
         initialStablecoinHolding.amount - BigInt(BOND_COST * NUM_BONDS_BUYING));
-      assert.equal(bondsInCirculation, NUM_BONDS_BUYING);
       assert.equal(bondsHolding.amount, NUM_BONDS_BUYING);
     });
   });
 
   describe('trade', function () {
 
-    it('should be able to trade bond after EndBuyDate and before MaturityDate', () => {
+    it('should be able to trade bond', () => {
       // setup
-      createApp({});
-      setStablecoinEscrowInApp();
-      runtime.optInToApp(investor.address, applicationId, {}, {});
+      createMainApp();
+      updateMainApp(masterAddr);
+      runtime.optInToApp(investor.address, mainAppId, {}, {});
       runtime.setRoundAndTimestamp(3, START_BUY_DATE);
       const NUM_BONDS_BUYING = 3;
       fundStablecoin(BOND_COST * NUM_BONDS_BUYING, investor.address);
       buyBond(NUM_BONDS_BUYING, BOND_COST);
 
-      runtime.optInToApp(trader.address, applicationId, {}, {});
+      runtime.optInToApp(trader.address, mainAppId, {}, {});
       runtime.optIntoASA(bondId, trader.address, {})
 
       // trade
@@ -439,7 +381,7 @@ describe('Green Bond Tests', function () {
           type: types.TransactionType.CallNoOpSSC,
           sign: types.SignType.SecretKey,
           fromAccount: investor.account,
-          appId: applicationId,
+          appId: mainAppId,
           payFlags: {},
           appArgs: [stringToBytes('trade')],
           accounts: [trader.address]
@@ -479,11 +421,11 @@ describe('Green Bond Tests', function () {
 
   describe('claim_coupon', function () {
 
-    it('should be able to claim coupon at coupon time', () => {
+    it('should be able to claim coupon', () => {
       // setup
-      createApp({});
-      setStablecoinEscrowInApp();
-      runtime.optInToApp(investor.address, applicationId, {}, {});
+      createMainApp();
+      updateMainApp(masterAddr);
+      runtime.optInToApp(investor.address, mainAppId, {}, {});
       runtime.setRoundAndTimestamp(3, START_BUY_DATE);
       const NUM_BONDS_BUYING = 3;
       fundStablecoin(BOND_COST * NUM_BONDS_BUYING, investor.address);
@@ -503,9 +445,9 @@ describe('Green Bond Tests', function () {
           type: types.TransactionType.CallNoOpSSC,
           sign: types.SignType.SecretKey,
           fromAccount: investor.account,
-          appId: applicationId,
+          appId: mainAppId,
           payFlags: {},
-          appArgs: [stringToBytes('claim_coupon')],
+          appArgs: [stringToBytes('coupon')],
           accounts: [stablecoinEscrowAddress]
         },
         {
@@ -522,7 +464,7 @@ describe('Green Bond Tests', function () {
           fromAccount: stablecoinEscrow.account,
           lsig: stablecoinEscrowLsig,
           toAccountAddr: investor.address,
-          amount: NUM_BONDS_BUYING * BOND_COUPON_PAYMENT_VALUE,
+          amount: NUM_BONDS_BUYING * BOND_COUPON,
           assetID: stablecoinId,
           payFlags: { totalFee: 1000 }
         }
@@ -530,40 +472,40 @@ describe('Green Bond Tests', function () {
 
       runtime.executeTx(claimCouponTxGroup);
 
-      const localNoOfBondCouponPayments = getLocal(investor.address, 'NoOfBondCouponPayments');
-      const totalBondCouponPayments = getGlobal('TotalBondCouponPayments');
+      const localCouponsPayed = getLocal(investor.address, 'CouponsPayed');
+      const totalCouponsPayed = getGlobal('TotCouponsPayed');
       const afterInvestorStablecoinHolding = runtime.getAssetHolding(stablecoinId, investor.address);
       const afterEscrowStablecoinHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrowAddress);
 
-      assert.equal(localNoOfBondCouponPayments, 1);
-      assert.equal(totalBondCouponPayments, NUM_BONDS_BUYING);
+      assert.equal(localCouponsPayed, 1);
+      assert.equal(totalCouponsPayed, NUM_BONDS_BUYING);
       assert.equal(afterInvestorStablecoinHolding.amount,
-        initialInvestorStablecoinHolding.amount + BigInt(NUM_BONDS_BUYING * BOND_COUPON_PAYMENT_VALUE));
+        initialInvestorStablecoinHolding.amount + BigInt(NUM_BONDS_BUYING * BOND_COUPON));
       assert.equal(afterEscrowStablecoinHolding.amount,
-        initialEscrowStablecoinHolding.amount - BigInt(NUM_BONDS_BUYING * BOND_COUPON_PAYMENT_VALUE));
+        initialEscrowStablecoinHolding.amount - BigInt(NUM_BONDS_BUYING * BOND_COUPON));
     });
   });
 
   describe('claim_principal', function () {
 
-    it('should be able to claim principal at maturity time', () => {
+    it('should be able to claim principal', () => {
       // setup
-      createApp({ bondCouponPaymentValue: 0 });
-      setStablecoinEscrowInApp();
-      runtime.optInToApp(investor.address, applicationId, {}, {});
+      createMainApp();
+      updateMainApp(masterAddr, {
+        BOND_COUPON: 0
+      });
+      runtime.optInToApp(investor.address, mainAppId, {}, {});
       runtime.setRoundAndTimestamp(3, START_BUY_DATE);
       const NUM_BONDS_BUYING = 3;
       fundStablecoin(BOND_COST * NUM_BONDS_BUYING, investor.address);
       buyBond(NUM_BONDS_BUYING, BOND_COST);
 
       // claim principal
-      const maturityDate = getGlobal("MaturityDate")
-      runtime.setRoundAndTimestamp(4, maturityDate);
+      runtime.setRoundAndTimestamp(4, MATURITY_DATE);
       const bondEscrowAddress = bondEscrowLsig.address();
       const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
       fundStablecoin(BOND_PRINCIPAL * NUM_BONDS_BUYING, stablecoinEscrowAddress);
 
-      const initialBondsInCirculation = getGlobal("NoOfBondsInCirculation");
       const initialEscrowBondHolding = runtime.getAssetHolding(bondId, bondEscrowAddress);
       const initialInvestorStablecoinHolding = runtime.getAssetHolding(stablecoinId, investor.address);
       const initialEscrowStablecoinHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrowAddress);
@@ -574,9 +516,9 @@ describe('Green Bond Tests', function () {
           type: types.TransactionType.CallNoOpSSC,
           sign: types.SignType.SecretKey,
           fromAccount: investor.account,
-          appId: applicationId,
+          appId: mainAppId,
           payFlags: {},
-          appArgs: [stringToBytes('claim_principal')],
+          appArgs: [stringToBytes('sell')],
           accounts: [stablecoinEscrowAddress]
         },
         {
@@ -620,13 +562,11 @@ describe('Green Bond Tests', function () {
 
       runtime.executeTx(claimPrincipalTxGroup);
 
-      const afterBondsInCirculation = getGlobal("NoOfBondsInCirculation");
       const investorBondHolding = runtime.getAssetHolding(bondId, investor.address);
       const afterEscrowBondHolding = runtime.getAssetHolding(bondId, bondEscrowAddress);
       const afterInvestorStablecoinHolding = runtime.getAssetHolding(stablecoinId, investor.address);
       const afterEscrowStablecoinHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrowAddress);
 
-      assert.equal(afterBondsInCirculation, initialBondsInCirculation - BigInt(NUM_BONDS_BUYING));
       assert.equal(investorBondHolding.amount, 0);
       assert.equal(afterEscrowBondHolding.amount,
         initialEscrowBondHolding.amount + BigInt(NUM_BONDS_BUYING));

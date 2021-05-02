@@ -35,19 +35,19 @@ echo "Stablecoin Stateless Contract Address = ${STABLECOIN_STATELESS_ADDRESS}"
 
 BOND_ID=1
 STABLECOIN_ID=2
-APP_ID=12
+APP_ID=13
 
 NUM_BONDS=3
 BOND_COST=50000000 # $50.000000
 TOTAL_COST=$(($NUM_BONDS * $BOND_COST))
 
 # need to opt in investor account to new bond, stablecoin and app
-${gcmd} asset send -a 0 -f ${INVESTOR} -t ${INVESTOR} --assetid ${BOND_ID}
-${gcmd} asset send -a 0 -f ${INVESTOR} -t ${INVESTOR} --assetid ${STABLECOIN_ID}
-${gcmd} app optin --app-id ${APP_ID} --from ${INVESTOR}
-
-# send $1000 to second account so has funds to buy bond
-${gcmd} asset send -a 1000000000 -f ${MASTER} -t ${INVESTOR} --assetid ${STABLECOIN_ID}
+#${gcmd} asset send -a 0 -f ${INVESTOR} -t ${INVESTOR} --assetid ${BOND_ID}
+#${gcmd} asset send -a 0 -f ${INVESTOR} -t ${INVESTOR} --assetid ${STABLECOIN_ID}
+#${gcmd} app optin --app-id ${APP_ID} --from ${INVESTOR}
+#
+## send $1000 to second account so has funds to buy bond
+#${gcmd} asset send -a 1000000000 -f ${MASTER} -t ${INVESTOR} --assetid ${STABLECOIN_ID}
 
 # create transactions
 ${gcmd} app call --app-id ${APP_ID} --app-arg "str:buy" --from ${INVESTOR} --out=unsignedtx0.tx
@@ -70,8 +70,8 @@ cat signout-0.tx signout-1.tx signout-2.tx signout-3.tx > signout.tx
 # two options: can either generate context debug file or create your own to use
 ${gcmd} clerk dryrun -t signout.tx --dryrun-dump -o dr.json
 # debug
-#tealdbg debug ${TEAL_APPROVAL_PROG} -d dr.json --group-index 0
-tealdbg debug ${BOND_STATELESS_TEAL} -d dr.json --group-index 1
+tealdbg debug ${TEAL_APPROVAL_PROG} -d dr.json --group-index 0
+#tealdbg debug ${BOND_STATELESS_TEAL} -d dr.json --group-index 1
 
 
 # clean up files

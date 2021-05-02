@@ -6,4 +6,5 @@ pycparser==2.20
 pycryptodomex==3.10.1
 PyNaCl==1.4.0
 pyteal==0.7.0
+PyYAML==5.4.1
 six==1.15.0

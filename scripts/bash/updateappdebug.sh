@@ -19,7 +19,7 @@ MASTER=$(${gcmd} account list|awk '{ print $3 }'|tail -1)
 ISSUER=$(${gcmd} account list|awk '{ print $3 }'|head -1)
 INVESTOR=$(${gcmd} account list|awk '{ print $3 }'|head -2|tail -1)
 
-APP_ID=12
+APP_ID=13
 
 # update app
 OLD_TEAL_APPROVAL_PROG="../../generated-src/initialStateful.teal"
