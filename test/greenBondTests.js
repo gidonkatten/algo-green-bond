@@ -32,7 +32,7 @@ describe('Green Bond Tests', function () {
 
   let runtime;
   let mainAppId;
-  let creationFlags;
+  let manageAppId;
   let bondId;
   let bondDef;
   let stablecoinId;
@@ -40,6 +40,7 @@ describe('Green Bond Tests', function () {
 
   const initialApprovalProgram = getProgram('initialStateful.py');
   let updatedApprovalProgram;
+  let manageApprovalProgram;
   const clearProgram = getProgram('greenBondClear.py');
 
   const getGlobal = (key) => runtime.getGlobalState(mainAppId, key);
@@ -77,30 +78,65 @@ describe('Green Bond Tests', function () {
   }
 
   /**
-   * This function creates app and sets app id to 11
+   * This function creates main app and sets app id to 13
    */
   function createMainApp() {
-    runtime.appCounter = 11;
-
-    creationFlags = {
-      sender: master.account,
-      localInts: 1,
-      localBytes: 0,
-      globalInts: 10,
-      globalBytes: 2
-    };
-    const creationArgs = [];
+    runtime.appCounter = 12;
 
     // create application
     mainAppId = runtime.addApp(
-      { ...creationFlags, appArgs: creationArgs },
+      {
+        sender: master.account,
+        localInts: 1,
+        localBytes: 0,
+        globalInts: 1,
+        globalBytes: 1,
+        appArgs: []
+      },
       {},
       initialApprovalProgram,
       clearProgram
     );
 
 
-    assert.equal(mainAppId, 12);
+    assert.equal(mainAppId, 13);
+  }
+
+  /**
+   * This function creates manage app and sets app id to 14
+   */
+  function createManageApp(params) {
+    manageApprovalProgram = getProgram('manageGreenBondApproval.py', {
+      MAIN_APP_ID: mainAppId,
+      STABLECOIN_ESCROW_ADDR: stablecoinEscrow.address,
+      BOND_ESCROW_ADDR: bondEscrow.address,
+      SIX_MONTH_PERIOD: SIX_MONTH_PERIOD,
+      BOND_LENGTH: BOND_LENGTH, // 1 year ie 2 six month periods
+      START_BUY_DATE: START_BUY_DATE,
+      END_BUY_DATE: END_BUY_DATE,
+      MATURITY_DATE: MATURITY_DATE,
+      BOND_COUPON: BOND_COUPON, // $2.5
+      BOND_PRINCIPAL: BOND_PRINCIPAL,
+      ...params
+    });
+
+    // create application
+    manageAppId = runtime.addApp(
+      {
+        sender: master.account,
+        localInts: 0,
+        localBytes: 0,
+        globalInts: 0,
+        globalBytes: 0,
+        appArgs: []
+      },
+      {},
+      manageApprovalProgram,
+      clearProgram
+    );
+
+
+    assert.equal(manageAppId, 14);
   }
 
   /**
@@ -425,6 +461,7 @@ describe('Green Bond Tests', function () {
       // setup
       createMainApp();
       updateMainApp(masterAddr);
+      // createManageApp();
       runtime.optInToApp(investor.address, mainAppId, {}, {});
       runtime.setRoundAndTimestamp(3, START_BUY_DATE);
       const NUM_BONDS_BUYING = 3;
@@ -433,6 +470,7 @@ describe('Green Bond Tests', function () {
 
       // claim coupon
       runtime.setRoundAndTimestamp(4, END_BUY_DATE + SIX_MONTH_PERIOD);
+      // const bondEscrowAddress = bondEscrowLsig.address();
       const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
       fundStablecoin(BOND_COST * NUM_BONDS_BUYING, stablecoinEscrowAddress);
 
@@ -447,8 +485,7 @@ describe('Green Bond Tests', function () {
           fromAccount: investor.account,
           appId: mainAppId,
           payFlags: {},
-          appArgs: [stringToBytes('coupon')],
-          accounts: [stablecoinEscrowAddress]
+          appArgs: [stringToBytes('coupon')]
         },
         {
           type: types.TransactionType.TransferAlgo,
@@ -518,8 +555,7 @@ describe('Green Bond Tests', function () {
           fromAccount: investor.account,
           appId: mainAppId,
           payFlags: {},
-          appArgs: [stringToBytes('sell')],
-          accounts: [stablecoinEscrowAddress]
+          appArgs: [stringToBytes('sell')]
         },
         {
           type: types.TransactionType.RevokeAsset,
@@ -576,4 +612,55 @@ describe('Green Bond Tests', function () {
         initialEscrowStablecoinHolding.amount - BigInt(NUM_BONDS_BUYING * BOND_PRINCIPAL));
     });
   });
+
+  // describe('Manage green bond', function () {
+  //
+  //   it('has defaulted', () => {
+  //     createMainApp();
+  //     updateMainApp(masterAddr);
+  //     createManageApp();
+  //     runtime.optInToApp(investor.address, mainAppId, {}, {});
+  //     runtime.setRoundAndTimestamp(3, START_BUY_DATE);
+  //     const NUM_BONDS_BUYING = 3;
+  //     fundStablecoin(BOND_COST * NUM_BONDS_BUYING, investor.address);
+  //     buyBond(NUM_BONDS_BUYING, BOND_COST);
+  //
+  //     runtime.setRoundAndTimestamp(5, MATURITY_DATE);
+  //
+  //     runtime.executeTx({
+  //       type: types.TransactionType.CallNoOpSSC,
+  //       sign: types.SignType.SecretKey,
+  //       fromAccount: investor.account,
+  //       appId: manageAppId,
+  //       payFlags: {},
+  //       appArgs: [stringToBytes("yes")],
+  //       accounts: [stablecoinEscrow.address, bondEscrow.address],
+  //       foreignApps: [mainAppId],
+  //       foreignAssets: [bondId]
+  //     })
+  //   });
+  //
+  //   it('has not defaulted', () => {
+  //     createMainApp();
+  //     updateMainApp(masterAddr);
+  //     createManageApp();
+  //     runtime.optInToApp(investor.address, mainAppId, {}, {});
+  //     runtime.setRoundAndTimestamp(3, START_BUY_DATE);
+  //     const NUM_BONDS_BUYING = 3;
+  //     fundStablecoin(BOND_COST * NUM_BONDS_BUYING, investor.address);
+  //     buyBond(NUM_BONDS_BUYING, BOND_COST);
+  //
+  //     runtime.executeTx({
+  //       type: types.TransactionType.CallNoOpSSC,
+  //       sign: types.SignType.SecretKey,
+  //       fromAccount: investor.account,
+  //       appId: manageAppId,
+  //       payFlags: {},
+  //       appArgs: [stringToBytes("no")],
+  //       accounts: [stablecoinEscrow.address, bondEscrow.address],
+  //       foreignApps: [mainAppId],
+  //       foreignAssets: [bondId]
+  //     })
+  //   });
+  // });
 });

@@ -14,8 +14,6 @@ def contract(args):
     linked_with_bond_escrow = Gtxn[1].sender() == Addr(args["BOND_ESCROW_ADDR"])
     linked_with_stablecoin_escrow = Gtxn[2].sender() == Addr(args["STABLECOIN_ESCROW_ADDR"])
 
-    has_defaulted = Int(0)  # TODO
-
     # TODO
     on_closeout = Int(0)
 
@@ -66,7 +64,6 @@ def contract(args):
     ])
 
     # CLAIM COUPON: Stateless contract accounts verifies everything else
-    # NOTE: StablecoinEscrow account is specified in account array pos 1 TODO: look at
     # verify transfer of USDC is correct amount
     coupon_stablecoin_transfer = Gtxn[2].asset_amount() == Mul(
         Int(args["BOND_COUPON"]),
@@ -90,8 +87,6 @@ def contract(args):
     )
     # Update how many bond coupon payments locally and globally
     on_coupon = Seq([
-        Assert(Addr(args["STABLECOIN_ESCROW_ADDR"]) == Txn.accounts[1]),  # TODO: look at
-        Assert(Not(has_defaulted)),  # TODO: look at
         sender_bond_balance,
         Assert(coupon_verify),
         App.localPut(
@@ -107,7 +102,6 @@ def contract(args):
     ])
 
     # CLAIM PRINCIPAL: Stateless contract accounts verifies everything else
-    # NOTE: StablecoinEscrow account is specified in account array pos 1 TODO: look at
     # verify claiming principal for all bonds owned
     is_all_bonds = Gtxn[1].asset_amount() == sender_bond_balance.value()
     # verify have collected all coupon payments or no coupons exists
@@ -125,8 +119,6 @@ def contract(args):
     )
     #
     on_principal = Seq([
-        Assert(Addr(args["STABLECOIN_ESCROW_ADDR"]) == Txn.accounts[1]),  # TODO: look at
-        Assert(Not(has_defaulted)),  # TODO: look at
         sender_bond_balance,
         Assert(principal_verify),
         Int(1)

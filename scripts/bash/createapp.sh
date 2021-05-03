@@ -21,6 +21,7 @@ INVESTOR=$(${gcmd} account list|awk '{ print $3 }'|head -2|tail -1)
 # create app
 TEAL_APPROVAL_PROG="../../generated-src/initialStateful.teal"
 TEAL_CLEAR_PROG="../../generated-src/greenBondClear.teal"
+MANAGE_TEAL_APPROVAL_PROG="../../generated-src/manageGreenBondApproval.teal"
 
 GLOBAL_BYTESLICES=2
 GLOBAL_INTS=10
@@ -40,5 +41,19 @@ APP_ID=$(
 )
 echo "App ID = ${APP_ID}"
 
-# Read global state of contract
+MANAGE_APP_ID=$(
+  ${gcmd} app create --creator ${MASTER} \
+    --approval-prog $MANAGE_TEAL_APPROVAL_PROG \
+    --clear-prog $TEAL_CLEAR_PROG \
+    --global-byteslices 0 \
+    --global-ints 0 \
+    --local-byteslices 0 \
+    --local-ints 0 |
+    grep Created |
+    awk '{ print $6 }'
+)
+echo "MANAGE App ID = ${MANAGE_APP_ID}"
+
+# Read global state of contracts
 ${gcmd} app read --app-id ${APP_ID} --guess-format --global --from ${MASTER}
+${gcmd} app read --app-id ${MANAGE_APP_ID} --guess-format --global --from ${MASTER}

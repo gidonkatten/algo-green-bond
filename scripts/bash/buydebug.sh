@@ -42,12 +42,12 @@ BOND_COST=50000000 # $50.000000
 TOTAL_COST=$(($NUM_BONDS * $BOND_COST))
 
 # need to opt in investor account to new bond, stablecoin and app
-#${gcmd} asset send -a 0 -f ${INVESTOR} -t ${INVESTOR} --assetid ${BOND_ID}
-#${gcmd} asset send -a 0 -f ${INVESTOR} -t ${INVESTOR} --assetid ${STABLECOIN_ID}
-#${gcmd} app optin --app-id ${APP_ID} --from ${INVESTOR}
-#
-## send $1000 to second account so has funds to buy bond
-#${gcmd} asset send -a 1000000000 -f ${MASTER} -t ${INVESTOR} --assetid ${STABLECOIN_ID}
+${gcmd} asset send -a 0 -f ${INVESTOR} -t ${INVESTOR} --assetid ${BOND_ID}
+${gcmd} asset send -a 0 -f ${INVESTOR} -t ${INVESTOR} --assetid ${STABLECOIN_ID}
+${gcmd} app optin --app-id ${APP_ID} --from ${INVESTOR}
+
+# send $1000 to second account so has funds to buy bond
+${gcmd} asset send -a 1000000000 -f ${MASTER} -t ${INVESTOR} --assetid ${STABLECOIN_ID}
 
 # create transactions
 ${gcmd} app call --app-id ${APP_ID} --app-arg "str:buy" --from ${INVESTOR} --out=unsignedtx0.tx
