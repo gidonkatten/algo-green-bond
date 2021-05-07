@@ -179,7 +179,7 @@ describe('Green Bond Tests', function () {
       {
         type: types.TransactionType.RevokeAsset,
         sign: types.SignType.LogicSignature,
-        fromAccount: bondEscrow.account,
+        fromAccountAddr: bondEscrowAddress,
         lsig: bondEscrowLsig,
         revocationTarget: bondEscrowAddress,
         recipient: investor.address,
@@ -425,7 +425,7 @@ describe('Green Bond Tests', function () {
         {
           type: types.TransactionType.RevokeAsset,
           sign: types.SignType.LogicSignature,
-          fromAccount: bondEscrow.account,
+          fromAccountAddr: bondEscrowAddress,
           lsig: bondEscrowLsig,
           revocationTarget: investor.address,
           recipient: trader.address,
@@ -470,7 +470,6 @@ describe('Green Bond Tests', function () {
 
       // claim coupon
       runtime.setRoundAndTimestamp(4, END_BUY_DATE + SIX_MONTH_PERIOD);
-      // const bondEscrowAddress = bondEscrowLsig.address();
       const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
       fundStablecoin(BOND_COST * NUM_BONDS_BUYING, stablecoinEscrowAddress);
 
@@ -498,15 +497,25 @@ describe('Green Bond Tests', function () {
         {
           type: types.TransactionType.TransferAsset,
           sign: types.SignType.LogicSignature,
-          fromAccount: stablecoinEscrow.account,
+          fromAccountAddr: stablecoinEscrowAddress,
           lsig: stablecoinEscrowLsig,
           toAccountAddr: investor.address,
           amount: NUM_BONDS_BUYING * BOND_COUPON,
           assetID: stablecoinId,
           payFlags: { totalFee: 1000 }
         }
+        // {
+        //   type: types.TransactionType.CallNoOpSSC,
+        //   sign: types.SignType.SecretKey,
+        //   fromAccount: investor.account,
+        //   appId: manageAppId,
+        //   payFlags: {},
+        //   appArgs: [stringToBytes("no")],
+        //   accounts: [stablecoinEscrow.address, bondEscrow.address],
+        //   foreignApps: [mainAppId],
+        //   foreignAssets: [bondId]
+        // }
       ];
-
       runtime.executeTx(claimCouponTxGroup);
 
       const localCouponsPayed = getLocal(investor.address, 'CouponsPayed');
@@ -560,7 +569,7 @@ describe('Green Bond Tests', function () {
         {
           type: types.TransactionType.RevokeAsset,
           sign: types.SignType.LogicSignature,
-          fromAccount: bondEscrow.account,
+          fromAccountAddr: bondEscrowAddress,
           lsig: bondEscrowLsig,
           revocationTarget: investor.address,
           recipient: bondEscrowAddress,
@@ -571,7 +580,7 @@ describe('Green Bond Tests', function () {
         {
           type: types.TransactionType.TransferAsset,
           sign: types.SignType.LogicSignature,
-          fromAccount: stablecoinEscrow.account,
+          fromAccountAddr: stablecoinEscrowAddress,
           lsig: stablecoinEscrowLsig,
           toAccountAddr: investor.address,
           amount: NUM_BONDS_BUYING * BOND_PRINCIPAL,
@@ -613,54 +622,103 @@ describe('Green Bond Tests', function () {
     });
   });
 
-  // describe('Manage green bond', function () {
-  //
-  //   it('has defaulted', () => {
-  //     createMainApp();
-  //     updateMainApp(masterAddr);
-  //     createManageApp();
-  //     runtime.optInToApp(investor.address, mainAppId, {}, {});
-  //     runtime.setRoundAndTimestamp(3, START_BUY_DATE);
-  //     const NUM_BONDS_BUYING = 3;
-  //     fundStablecoin(BOND_COST * NUM_BONDS_BUYING, investor.address);
-  //     buyBond(NUM_BONDS_BUYING, BOND_COST);
-  //
-  //     runtime.setRoundAndTimestamp(5, MATURITY_DATE);
-  //
-  //     runtime.executeTx({
-  //       type: types.TransactionType.CallNoOpSSC,
-  //       sign: types.SignType.SecretKey,
-  //       fromAccount: investor.account,
-  //       appId: manageAppId,
-  //       payFlags: {},
-  //       appArgs: [stringToBytes("yes")],
-  //       accounts: [stablecoinEscrow.address, bondEscrow.address],
-  //       foreignApps: [mainAppId],
-  //       foreignAssets: [bondId]
-  //     })
-  //   });
-  //
-  //   it('has not defaulted', () => {
-  //     createMainApp();
-  //     updateMainApp(masterAddr);
-  //     createManageApp();
-  //     runtime.optInToApp(investor.address, mainAppId, {}, {});
-  //     runtime.setRoundAndTimestamp(3, START_BUY_DATE);
-  //     const NUM_BONDS_BUYING = 3;
-  //     fundStablecoin(BOND_COST * NUM_BONDS_BUYING, investor.address);
-  //     buyBond(NUM_BONDS_BUYING, BOND_COST);
-  //
-  //     runtime.executeTx({
-  //       type: types.TransactionType.CallNoOpSSC,
-  //       sign: types.SignType.SecretKey,
-  //       fromAccount: investor.account,
-  //       appId: manageAppId,
-  //       payFlags: {},
-  //       appArgs: [stringToBytes("no")],
-  //       accounts: [stablecoinEscrow.address, bondEscrow.address],
-  //       foreignApps: [mainAppId],
-  //       foreignAssets: [bondId]
-  //     })
-  //   });
-  // });
+  describe('Manage green bond', function () {
+
+    const NUM_BONDS_BUYING = 3;
+
+    beforeEach(() => {
+      createMainApp();
+      updateMainApp(masterAddr);
+      createManageApp();
+      runtime.optInToApp(investor.address, mainAppId, {}, {});
+      runtime.setRoundAndTimestamp(3, START_BUY_DATE);
+      fundStablecoin(BOND_COST * NUM_BONDS_BUYING, investor.address);
+      buyBond(NUM_BONDS_BUYING, BOND_COST);
+    });
+
+    describe('has defaulted', function () {
+
+      it('yes passes', () => {
+        // Set time to when have money to owe
+        runtime.setRoundAndTimestamp(5, MATURITY_DATE);
+        const stablecoinEscrowHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrow.address);
+        assert.equal(stablecoinEscrowHolding.amount, 0);
+
+        runtime.executeTx({
+          type: types.TransactionType.CallNoOpSSC,
+          sign: types.SignType.SecretKey,
+          fromAccount: investor.account,
+          appId: manageAppId,
+          payFlags: {},
+          appArgs: [stringToBytes("yes")],
+          accounts: [stablecoinEscrow.address, bondEscrow.address],
+          foreignApps: [mainAppId],
+          foreignAssets: [bondId]
+        })
+      });
+
+      it('no fails', () => {
+        // Set time to when have money to owe
+        runtime.setRoundAndTimestamp(5, MATURITY_DATE);
+        const stablecoinEscrowHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrow.address);
+        assert.equal(stablecoinEscrowHolding.amount, 0);
+
+        assert.throws(() => {
+          runtime.executeTx({
+            type: types.TransactionType.CallNoOpSSC,
+            sign: types.SignType.SecretKey,
+            fromAccount: investor.account,
+            appId: manageAppId,
+            payFlags: {},
+            appArgs: [stringToBytes("no")],
+            accounts: [stablecoinEscrow.address, bondEscrow.address],
+            foreignApps: [mainAppId],
+            foreignAssets: [bondId]
+          })
+        }, 'RUNTIME_ERR1007: Teal code rejected by logic');
+      });
+    });
+
+
+    describe('has not defaulted', function () {
+
+      it('no passes', () => {
+        // Set time to when have money to owe
+        runtime.setRoundAndTimestamp(5, MATURITY_DATE);
+        fundStablecoin(10000000000, stablecoinEscrow.address)
+
+        runtime.executeTx({
+          type: types.TransactionType.CallNoOpSSC,
+          sign: types.SignType.SecretKey,
+          fromAccount: investor.account,
+          appId: manageAppId,
+          payFlags: {},
+          appArgs: [stringToBytes("no")],
+          accounts: [stablecoinEscrow.address, bondEscrow.address],
+          foreignApps: [mainAppId],
+          foreignAssets: [bondId]
+        })
+      });
+
+      it('yes fails', () => {
+        // Set time to when have money to owe
+        runtime.setRoundAndTimestamp(5, MATURITY_DATE);
+        fundStablecoin(10000000000, stablecoinEscrow.address)
+
+        assert.throws(() => {
+          runtime.executeTx({
+            type: types.TransactionType.CallNoOpSSC,
+            sign: types.SignType.SecretKey,
+            fromAccount: investor.account,
+            appId: manageAppId,
+            payFlags: {},
+            appArgs: [stringToBytes("yes")],
+            accounts: [stablecoinEscrow.address, bondEscrow.address],
+            foreignApps: [mainAppId],
+            foreignAssets: [bondId]
+          })
+        }, 'RUNTIME_ERR1007: Teal code rejected by logic');
+      });
+    });
+  });
 });

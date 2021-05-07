@@ -21,10 +21,15 @@ def contract(args):
     coupon_round = If(
         Global.latest_timestamp() > Int(args["MATURITY_DATE"]),
         Int(args["BOND_LENGTH"]),  # coupon round is max BOND_LENGTH
-        Div(
-            Global.latest_timestamp() - Int(args["END_BUY_DATE"]),
-            Int(args["SIX_MONTH_PERIOD"])
+        If(
+            Global.latest_timestamp() < Int(args["END_BUY_DATE"]),
+            Int(0),  # no coupons if before start date
+            Div(
+                Global.latest_timestamp() - Int(args["END_BUY_DATE"]),
+                Int(args["SIX_MONTH_PERIOD"])
+            )
         )
+
     )
     remaining_coupon_value_owed_now = Mul(
         Int(args["BOND_COUPON"]),
