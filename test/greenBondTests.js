@@ -461,7 +461,7 @@ describe('Green Bond Tests', function () {
       // setup
       createMainApp();
       updateMainApp(masterAddr);
-      // createManageApp();
+      createManageApp();
       runtime.optInToApp(investor.address, mainAppId, {}, {});
       runtime.setRoundAndTimestamp(3, START_BUY_DATE);
       const NUM_BONDS_BUYING = 3;
@@ -503,18 +503,18 @@ describe('Green Bond Tests', function () {
           amount: NUM_BONDS_BUYING * BOND_COUPON,
           assetID: stablecoinId,
           payFlags: { totalFee: 1000 }
+        },
+        {
+          type: types.TransactionType.CallNoOpSSC,
+          sign: types.SignType.SecretKey,
+          fromAccount: investor.account,
+          appId: manageAppId,
+          payFlags: {},
+          appArgs: [stringToBytes("no")],
+          accounts: [stablecoinEscrow.address, bondEscrow.address],
+          foreignApps: [mainAppId],
+          foreignAssets: [bondId]
         }
-        // {
-        //   type: types.TransactionType.CallNoOpSSC,
-        //   sign: types.SignType.SecretKey,
-        //   fromAccount: investor.account,
-        //   appId: manageAppId,
-        //   payFlags: {},
-        //   appArgs: [stringToBytes("no")],
-        //   accounts: [stablecoinEscrow.address, bondEscrow.address],
-        //   foreignApps: [mainAppId],
-        //   foreignAssets: [bondId]
-        // }
       ];
       runtime.executeTx(claimCouponTxGroup);
 
@@ -540,6 +540,7 @@ describe('Green Bond Tests', function () {
       updateMainApp(masterAddr, {
         BOND_COUPON: 0
       });
+      createManageApp();
       runtime.optInToApp(investor.address, mainAppId, {}, {});
       runtime.setRoundAndTimestamp(3, START_BUY_DATE);
       const NUM_BONDS_BUYING = 3;
@@ -586,6 +587,17 @@ describe('Green Bond Tests', function () {
           amount: NUM_BONDS_BUYING * BOND_PRINCIPAL,
           assetID: stablecoinId,
           payFlags: { totalFee: 1000 }
+        },
+        {
+          type: types.TransactionType.CallNoOpSSC,
+          sign: types.SignType.SecretKey,
+          fromAccount: investor.account,
+          appId: manageAppId,
+          payFlags: {},
+          appArgs: [stringToBytes("no")],
+          accounts: [stablecoinEscrow.address, bondEscrow.address],
+          foreignApps: [mainAppId],
+          foreignAssets: [bondId]
         },
         {
           type: types.TransactionType.TransferAlgo,

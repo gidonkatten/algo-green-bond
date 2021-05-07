@@ -12,13 +12,14 @@ def contract(args):
         Gtxn[2].receiver() == Gtxn[1].sender(),
         Gtxn[2].amount() >= Gtxn[1].fee(),
     )
-    tx3_pay_fee_of_tx1 = And(
-        Gtxn[3].type_enum() == TxnType.Payment,
-        Gtxn[3].sender() == Gtxn[0].sender(),
-        Gtxn[3].receiver() == Gtxn[1].sender(),
-        Gtxn[3].amount() >= Gtxn[1].fee(),
+    tx4_pay_fee_of_tx1 = And(
+        Gtxn[4].type_enum() == TxnType.Payment,
+        Gtxn[4].sender() == Gtxn[0].sender(),
+        Gtxn[4].receiver() == Gtxn[1].sender(),
+        Gtxn[4].amount() >= Gtxn[1].fee(),
     )
 
+    # Opt into bond asset
     opt_in = And(
         Txn.asset_amount() == Int(0),
         Txn.fee() <= Int(1000),
@@ -80,12 +81,13 @@ def contract(args):
         Gtxn[1].asset_close_to() == Gtxn[1].sender()
     )
     # 2. transfer of USDC from stablecoin contract account to sender (verified in stablecoin escrow)
-    # 3. fee of tx1
-    principal_fee_transfer1 = tx3_pay_fee_of_tx1
-    # 4. fee of tx2 (verified in stablecoin escrow)
+    # 3. call to manage stateful contract (verified in stablecoin escrow)
+    # 4. fee of tx1
+    principal_fee_transfer1 = tx4_pay_fee_of_tx1
+    # 5. fee of tx2 (verified in stablecoin escrow)
     # Combine
     on_principal = And(
-        Global.group_size() == Int(5),
+        Global.group_size() == Int(6),
         principal_bond_transfer,
         principal_fee_transfer1,
     )
