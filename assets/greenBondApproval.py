@@ -11,8 +11,8 @@ def contract(args):
     sender_bond_balance = AssetHolding.balance(Int(0), Int(args["BOND_ID"]))
 
     # Sender is stateless contract account (clawback)
-    linked_with_bond_escrow = Gtxn[1].sender() == Addr(args["BOND_ESCROW_ADDR"])
-    linked_with_stablecoin_escrow = Gtxn[2].sender() == Addr(args["STABLECOIN_ESCROW_ADDR"])
+    linked_with_bond_escrow = Gtxn[2].sender() == Addr(args["BOND_ESCROW_ADDR"])
+    linked_with_stablecoin_escrow = Gtxn[3].sender() == Addr(args["STABLECOIN_ESCROW_ADDR"])
 
     # TODO
     on_closeout = Int(0)
@@ -65,7 +65,7 @@ def contract(args):
 
     # CLAIM COUPON: Stateless contract accounts verifies everything else
     # verify transfer of USDC is correct amount
-    coupon_stablecoin_transfer = Gtxn[2].asset_amount() == Mul(
+    coupon_stablecoin_transfer = Gtxn[3].asset_amount() == Mul(
         Int(args["BOND_COUPON"]),
         sender_bond_balance.value()
     )
@@ -103,7 +103,7 @@ def contract(args):
 
     # CLAIM PRINCIPAL: Stateless contract accounts verifies everything else
     # verify claiming principal for all bonds owned
-    is_all_bonds = Gtxn[1].asset_amount() == sender_bond_balance.value()
+    is_all_bonds = Gtxn[2].asset_amount() == sender_bond_balance.value()
     # verify have collected all coupon payments or no coupons exists
     collected_all_coupons = Or(
         Int(args["BOND_LENGTH"]) == App.localGet(Int(0), Bytes("CouponsPayed")),
@@ -121,11 +121,29 @@ def contract(args):
     on_principal = Seq([
         sender_bond_balance,
         Assert(principal_verify),
+        App.localDel(Int(0), Bytes("CouponsPayed")),
         Int(1)
     ])
 
     # CLAIM DEFAULT: Stateless contract accounts verifies everything else
+    # verify transfer of USDC is correct amount
+    default_verify = And(
+        is_all_bonds,
+        linked_with_bond_escrow,
+        linked_with_stablecoin_escrow
+    )
+    coupons_missed = Mul(
+        sender_bond_balance.value(),
+        Int(args["BOND_LENGTH"]) - App.localGet(Int(0), Bytes("CouponsPayed"))
+    )
     on_default = Seq([
+        sender_bond_balance,
+        Assert(default_verify),
+        App.localDel(Int(0), Bytes("CouponsPayed")),
+        App.globalPut(
+            Bytes("TotCouponsPayed"),
+            App.globalGet(Bytes("TotCouponsPayed")) + coupons_missed  # as if payed coupons off
+        ),
         Int(1)
     ])
 

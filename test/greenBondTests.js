@@ -177,6 +177,14 @@ describe('Green Bond Tests', function () {
         appArgs: [stringToBytes('buy')]
       },
       {
+        type: types.TransactionType.TransferAlgo,
+        sign: types.SignType.SecretKey,
+        fromAccount: investor.account,
+        toAccountAddr: bondEscrowAddress,
+        amountMicroAlgos: 1000,
+        payFlags: { totalFee: 1000 }
+      },
+      {
         type: types.TransactionType.RevokeAsset,
         sign: types.SignType.LogicSignature,
         fromAccountAddr: bondEscrowAddress,
@@ -185,14 +193,6 @@ describe('Green Bond Tests', function () {
         recipient: investor.address,
         amount: noOfBonds,
         assetID: bondId,
-        payFlags: { totalFee: 1000 }
-      },
-      {
-        type: types.TransactionType.TransferAlgo,
-        sign: types.SignType.SecretKey,
-        fromAccount: investor.account,
-        toAccountAddr: bondEscrowAddress,
-        amountMicroAlgos: 1000,
         payFlags: { totalFee: 1000 }
       },
       {
@@ -423,6 +423,14 @@ describe('Green Bond Tests', function () {
           accounts: [trader.address]
         },
         {
+          type: types.TransactionType.TransferAlgo,
+          sign: types.SignType.SecretKey,
+          fromAccount: investor.account,
+          toAccountAddr: bondEscrowAddress,
+          amountMicroAlgos: 1000,
+          payFlags: { totalFee: 1000 }
+        },
+        {
           type: types.TransactionType.RevokeAsset,
           sign: types.SignType.LogicSignature,
           fromAccountAddr: bondEscrowAddress,
@@ -431,14 +439,6 @@ describe('Green Bond Tests', function () {
           recipient: trader.address,
           amount: NUM_BONDS_TRADING,
           assetID: bondId,
-          payFlags: { totalFee: 1000 }
-        },
-        {
-          type: types.TransactionType.TransferAlgo,
-          sign: types.SignType.SecretKey,
-          fromAccount: investor.account,
-          toAccountAddr: bondEscrowAddress,
-          amountMicroAlgos: 1000,
           payFlags: { totalFee: 1000 }
         }
       ];
@@ -471,7 +471,7 @@ describe('Green Bond Tests', function () {
       // claim coupon
       runtime.setRoundAndTimestamp(4, END_BUY_DATE + PERIOD);
       const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
-      fundStablecoin(BOND_COST * NUM_BONDS_BUYING, stablecoinEscrowAddress);
+      fundStablecoin(BOND_COUPON * NUM_BONDS_BUYING, stablecoinEscrowAddress);
 
       const initialInvestorStablecoinHolding = runtime.getAssetHolding(stablecoinId, investor.address);
       const initialEscrowStablecoinHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrowAddress);
@@ -485,6 +485,17 @@ describe('Green Bond Tests', function () {
           appId: mainAppId,
           payFlags: {},
           appArgs: [stringToBytes('coupon')]
+        },
+        {
+          type: types.TransactionType.CallNoOpSSC,
+          sign: types.SignType.SecretKey,
+          fromAccount: investor.account,
+          appId: manageAppId,
+          payFlags: {},
+          appArgs: [stringToBytes("not_defaulted")],
+          accounts: [stablecoinEscrow.address, bondEscrow.address],
+          foreignApps: [mainAppId],
+          foreignAssets: [bondId]
         },
         {
           type: types.TransactionType.TransferAlgo,
@@ -503,17 +514,6 @@ describe('Green Bond Tests', function () {
           amount: NUM_BONDS_BUYING * BOND_COUPON,
           assetID: stablecoinId,
           payFlags: { totalFee: 1000 }
-        },
-        {
-          type: types.TransactionType.CallNoOpSSC,
-          sign: types.SignType.SecretKey,
-          fromAccount: investor.account,
-          appId: manageAppId,
-          payFlags: {},
-          appArgs: [stringToBytes("not_defaulted")],
-          accounts: [stablecoinEscrow.address, bondEscrow.address],
-          foreignApps: [mainAppId],
-          foreignAssets: [bondId]
         }
       ];
       runtime.executeTx(claimCouponTxGroup);
@@ -537,14 +537,12 @@ describe('Green Bond Tests', function () {
     it('should be able to claim principal', () => {
       // setup
       createMainApp();
-      updateMainApp(masterAddr, {
-        BOND_COUPON: 0
-      });
-      createManageApp();
+      updateMainApp(masterAddr, { BOND_COUPON: 0 });
+      createManageApp({ BOND_COUPON: 0 });
       runtime.optInToApp(investor.address, mainAppId, {}, {});
       runtime.setRoundAndTimestamp(3, START_BUY_DATE);
       const NUM_BONDS_BUYING = 3;
-      fundStablecoin(BOND_COST * NUM_BONDS_BUYING, investor.address);
+      fundStablecoin(BOND_PRINCIPAL * NUM_BONDS_BUYING, investor.address);
       buyBond(NUM_BONDS_BUYING, BOND_COST);
 
       // claim principal
@@ -568,6 +566,17 @@ describe('Green Bond Tests', function () {
           appArgs: [stringToBytes('sell')]
         },
         {
+          type: types.TransactionType.CallNoOpSSC,
+          sign: types.SignType.SecretKey,
+          fromAccount: investor.account,
+          appId: manageAppId,
+          payFlags: {},
+          appArgs: [stringToBytes("not_defaulted")],
+          accounts: [stablecoinEscrow.address, bondEscrow.address],
+          foreignApps: [mainAppId],
+          foreignAssets: [bondId]
+        },
+        {
           type: types.TransactionType.RevokeAsset,
           sign: types.SignType.LogicSignature,
           fromAccountAddr: bondEscrowAddress,
@@ -589,17 +598,6 @@ describe('Green Bond Tests', function () {
           payFlags: { totalFee: 1000 }
         },
         {
-          type: types.TransactionType.CallNoOpSSC,
-          sign: types.SignType.SecretKey,
-          fromAccount: investor.account,
-          appId: manageAppId,
-          payFlags: {},
-          appArgs: [stringToBytes("not_defaulted")],
-          accounts: [stablecoinEscrow.address, bondEscrow.address],
-          foreignApps: [mainAppId],
-          foreignAssets: [bondId]
-        },
-        {
           type: types.TransactionType.TransferAlgo,
           sign: types.SignType.SecretKey,
           fromAccount: investor.account,
@@ -619,11 +617,13 @@ describe('Green Bond Tests', function () {
 
       runtime.executeTx(claimPrincipalTxGroup);
 
+      const localCouponsPayed = getLocal(investor.address, 'CouponsPayed');
       const investorBondHolding = runtime.getAssetHolding(bondId, investor.address);
       const afterEscrowBondHolding = runtime.getAssetHolding(bondId, bondEscrowAddress);
       const afterInvestorStablecoinHolding = runtime.getAssetHolding(stablecoinId, investor.address);
       const afterEscrowStablecoinHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrowAddress);
 
+      assert.isUndefined(localCouponsPayed);
       assert.equal(investorBondHolding.amount, 0);
       assert.equal(afterEscrowBondHolding.amount,
         initialEscrowBondHolding.amount + BigInt(NUM_BONDS_BUYING));
@@ -631,6 +631,110 @@ describe('Green Bond Tests', function () {
         initialInvestorStablecoinHolding.amount + BigInt(NUM_BONDS_BUYING * BOND_PRINCIPAL));
       assert.equal(afterEscrowStablecoinHolding.amount,
         initialEscrowStablecoinHolding.amount - BigInt(NUM_BONDS_BUYING * BOND_PRINCIPAL));
+    });
+  });
+
+  describe('default', function () {
+
+    it('should be able to claim default', () => {
+      // setup
+      createMainApp();
+      updateMainApp(masterAddr, {
+        BOND_COUPON: 0
+      });
+      createManageApp();
+      runtime.optInToApp(investor.address, mainAppId, {}, {});
+      runtime.setRoundAndTimestamp(3, START_BUY_DATE);
+      const NUM_BONDS_BUYING = 3;
+      fundStablecoin(BOND_COST * NUM_BONDS_BUYING, investor.address);
+      buyBond(NUM_BONDS_BUYING, BOND_COST);
+
+      // claim default
+      runtime.setRoundAndTimestamp(4, MATURITY_DATE);
+      const bondEscrowAddress = bondEscrowLsig.address();
+      const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
+      fundStablecoin((BOND_PRINCIPAL * NUM_BONDS_BUYING) / 2, stablecoinEscrowAddress);
+
+      const initialEscrowBondHolding = runtime.getAssetHolding(bondId, bondEscrowAddress);
+      const initialInvestorStablecoinHolding = runtime.getAssetHolding(stablecoinId, investor.address);
+      const initialEscrowStablecoinHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrowAddress);
+
+      // Atomic Transaction
+      const claimDefaultTxGroup = [
+        {
+          type: types.TransactionType.CallNoOpSSC,
+          sign: types.SignType.SecretKey,
+          fromAccount: investor.account,
+          appId: mainAppId,
+          payFlags: {},
+          appArgs: [stringToBytes('default')]
+        },
+        {
+          type: types.TransactionType.CallNoOpSSC,
+          sign: types.SignType.SecretKey,
+          fromAccount: investor.account,
+          appId: manageAppId,
+          payFlags: {},
+          appArgs: [stringToBytes("claim_default")],
+          accounts: [stablecoinEscrow.address, bondEscrow.address],
+          foreignApps: [mainAppId],
+          foreignAssets: [bondId]
+        },
+        {
+          type: types.TransactionType.RevokeAsset,
+          sign: types.SignType.LogicSignature,
+          fromAccountAddr: bondEscrowAddress,
+          lsig: bondEscrowLsig,
+          revocationTarget: investor.address,
+          recipient: bondEscrowAddress,
+          amount: NUM_BONDS_BUYING,
+          assetID: bondId,
+          payFlags: { totalFee: 1000, closeRemainderTo: bondEscrowAddress }
+        },
+        {
+          type: types.TransactionType.TransferAsset,
+          sign: types.SignType.LogicSignature,
+          fromAccountAddr: stablecoinEscrowAddress,
+          lsig: stablecoinEscrowLsig,
+          toAccountAddr: investor.address,
+          amount: (NUM_BONDS_BUYING * BOND_PRINCIPAL) / 2,
+          assetID: stablecoinId,
+          payFlags: { totalFee: 1000 }
+        },
+        {
+          type: types.TransactionType.TransferAlgo,
+          sign: types.SignType.SecretKey,
+          fromAccount: investor.account,
+          toAccountAddr: bondEscrowAddress,
+          amountMicroAlgos: 1000,
+          payFlags: { totalFee: 1000 }
+        },
+        {
+          type: types.TransactionType.TransferAlgo,
+          sign: types.SignType.SecretKey,
+          fromAccount: investor.account,
+          toAccountAddr: stablecoinEscrowAddress,
+          amountMicroAlgos: 1000,
+          payFlags: { totalFee: 1000 }
+        },
+      ];
+
+      runtime.executeTx(claimDefaultTxGroup);
+
+      const localCouponsPayed = getLocal(investor.address, 'CouponsPayed');
+      const investorBondHolding = runtime.getAssetHolding(bondId, investor.address);
+      const afterEscrowBondHolding = runtime.getAssetHolding(bondId, bondEscrowAddress);
+      const afterInvestorStablecoinHolding = runtime.getAssetHolding(stablecoinId, investor.address);
+      const afterEscrowStablecoinHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrowAddress);
+
+      assert.isUndefined(localCouponsPayed);
+      assert.equal(investorBondHolding.amount, 0);
+      assert.equal(afterEscrowBondHolding.amount,
+        initialEscrowBondHolding.amount + BigInt(NUM_BONDS_BUYING));
+      assert.equal(afterInvestorStablecoinHolding.amount,
+        initialInvestorStablecoinHolding.amount + BigInt((NUM_BONDS_BUYING * BOND_PRINCIPAL) / 2));
+      assert.equal(afterEscrowStablecoinHolding.amount,
+        initialEscrowStablecoinHolding.amount - BigInt((NUM_BONDS_BUYING * BOND_PRINCIPAL) / 2));
     });
   });
 

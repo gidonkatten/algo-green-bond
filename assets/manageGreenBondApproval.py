@@ -10,16 +10,17 @@ def contract(args):
     # Setup
     stablecoin_escrow_balance = AssetHolding.balance(Int(1), Int(args["STABLECOIN_ID"]))
     bond_escrow_balance = AssetHolding.balance(Int(2), Int(args["BOND_ID"]))
+    sender_bond_balance = AssetHolding.balance(Int(0), Int(args["BOND_ID"]))
     bond_total = AssetParam.total(Int(0))
     coupons_payed_total = App.globalGetEx(Int(1), Bytes("TotCouponsPayed"))
 
     # Implementation
-    num_bonds = Minus(
+    global_num_bonds_in_circ = Minus(
         bond_total.value(),
         bond_escrow_balance.value()
     )
     coupon_round = If(
-        Global.latest_timestamp() > Int(args["MATURITY_DATE"]),
+        Global.latest_timestamp() >= Int(args["MATURITY_DATE"]),
         Int(args["BOND_LENGTH"]),  # coupon round is max BOND_LENGTH
         If(
             Global.latest_timestamp() < Int(args["END_BUY_DATE"]),
@@ -31,22 +32,34 @@ def contract(args):
         )
 
     )
-    remaining_coupon_value_owed_now = Mul(
+    global_coupon_value_owed_now = Mul(
         Int(args["BOND_COUPON"]),
-        Minus(
-            coupon_round * num_bonds,
+        Minus(  # Total number of coupons unpaid until now
+            coupon_round * global_num_bonds_in_circ,
             coupons_payed_total.value()
         )
     )
-    remaining_principal_value_owed_now = If(
-        Global.latest_timestamp() > Int(args["MATURITY_DATE"]),
-        Int(args["BOND_PRINCIPAL"]) * num_bonds,
+    global_principal_value_owed_now = If(
+        Global.latest_timestamp() >= Int(args["MATURITY_DATE"]),
+        Int(args["BOND_PRINCIPAL"]) * global_num_bonds_in_circ,
         Int(0)  # 0 if not yet maturity
     )
-    remaining_total_value_owed_now = remaining_coupon_value_owed_now + remaining_principal_value_owed_now
-    has_defaulted = remaining_total_value_owed_now > stablecoin_escrow_balance.value()
 
+    # Value owed across all bonds
+    global_value_owed_now = global_coupon_value_owed_now + global_principal_value_owed_now
+
+    # Can afford to pay out all money owed - stored
+    has_defaulted = global_value_owed_now > stablecoin_escrow_balance.value()
     has_defaulted_stored = ScratchVar(TealType.uint64)
+
+    # CLAIM DEFAULT: Verify stablecoin payout
+    # TODO: More sophisticated payout eg if someone didn't prev claim their coupon?
+    stablecoin_transfer = Eq(
+        global_num_bonds_in_circ / sender_bond_balance.value(),
+        stablecoin_escrow_balance.value() / Gtxn[3].asset_amount()
+    )
+
+    # HANDLE NO OP
     handle_no_op = Seq([
         Assert(
             And(
@@ -58,13 +71,14 @@ def contract(args):
         ),
         stablecoin_escrow_balance,
         bond_escrow_balance,
+        sender_bond_balance,
         bond_total,
-        Assert(bond_total.hasValue()),
         coupons_payed_total,
         has_defaulted_stored.store(has_defaulted),
         Cond(
             [Txn.application_args[0] == Bytes("defaulted"), has_defaulted_stored.load()],
-            [Txn.application_args[0] == Bytes("not_defaulted"), Not(has_defaulted_stored.load())]
+            [Txn.application_args[0] == Bytes("not_defaulted"), Not(has_defaulted_stored.load())],
+            [Txn.application_args[0] == Bytes("claim_default"), has_defaulted_stored.load() & stablecoin_transfer],
         )
     ])
 
