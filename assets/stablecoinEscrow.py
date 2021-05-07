@@ -74,7 +74,7 @@ def contract(args):
     linked_with_manage_app_call = And(
         Gtxn[3].type_enum() == TxnType.ApplicationCall,
         Gtxn[3].application_id() == Int(args["MANAGE_APP_ID"]),
-        Gtxn[3].application_args[0] == Bytes("no")
+        Gtxn[3].application_args[0] == Bytes("not_defaulted")
     )
     stablecoin_transfer = And(
         Txn.group_index() == Int(2),

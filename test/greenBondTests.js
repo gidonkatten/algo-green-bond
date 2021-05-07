@@ -510,7 +510,7 @@ describe('Green Bond Tests', function () {
           fromAccount: investor.account,
           appId: manageAppId,
           payFlags: {},
-          appArgs: [stringToBytes("no")],
+          appArgs: [stringToBytes("not_defaulted")],
           accounts: [stablecoinEscrow.address, bondEscrow.address],
           foreignApps: [mainAppId],
           foreignAssets: [bondId]
@@ -594,7 +594,7 @@ describe('Green Bond Tests', function () {
           fromAccount: investor.account,
           appId: manageAppId,
           payFlags: {},
-          appArgs: [stringToBytes("no")],
+          appArgs: [stringToBytes("not_defaulted")],
           accounts: [stablecoinEscrow.address, bondEscrow.address],
           foreignApps: [mainAppId],
           foreignAssets: [bondId]
@@ -662,7 +662,7 @@ describe('Green Bond Tests', function () {
           fromAccount: investor.account,
           appId: manageAppId,
           payFlags: {},
-          appArgs: [stringToBytes("yes")],
+          appArgs: [stringToBytes("defaulted")],
           accounts: [stablecoinEscrow.address, bondEscrow.address],
           foreignApps: [mainAppId],
           foreignAssets: [bondId]
@@ -682,7 +682,7 @@ describe('Green Bond Tests', function () {
             fromAccount: investor.account,
             appId: manageAppId,
             payFlags: {},
-            appArgs: [stringToBytes("no")],
+            appArgs: [stringToBytes("not_defaulted")],
             accounts: [stablecoinEscrow.address, bondEscrow.address],
             foreignApps: [mainAppId],
             foreignAssets: [bondId]
@@ -705,7 +705,7 @@ describe('Green Bond Tests', function () {
           fromAccount: investor.account,
           appId: manageAppId,
           payFlags: {},
-          appArgs: [stringToBytes("no")],
+          appArgs: [stringToBytes("not_defaulted")],
           accounts: [stablecoinEscrow.address, bondEscrow.address],
           foreignApps: [mainAppId],
           foreignAssets: [bondId]
@@ -724,7 +724,7 @@ describe('Green Bond Tests', function () {
             fromAccount: investor.account,
             appId: manageAppId,
             payFlags: {},
-            appArgs: [stringToBytes("yes")],
+            appArgs: [stringToBytes("defaulted")],
             accounts: [stablecoinEscrow.address, bondEscrow.address],
             foreignApps: [mainAppId],
             foreignAssets: [bondId]

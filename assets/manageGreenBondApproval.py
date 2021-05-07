@@ -63,8 +63,8 @@ def contract(args):
         coupons_payed_total,
         has_defaulted_stored.store(has_defaulted),
         Cond(
-            [Txn.application_args[0] == Bytes("yes"), has_defaulted_stored.load()],
-            [Txn.application_args[0] == Bytes("no"), Not(has_defaulted_stored.load())]
+            [Txn.application_args[0] == Bytes("defaulted"), has_defaulted_stored.load()],
+            [Txn.application_args[0] == Bytes("not_defaulted"), Not(has_defaulted_stored.load())]
         )
     ])
 
