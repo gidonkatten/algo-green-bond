@@ -75,7 +75,7 @@ def contract(args):
         Int(args["BOND_LENGTH"]),  # coupon round is max BOND_LENGTH
         Div(
             Global.latest_timestamp() - Int(args["END_BUY_DATE"]),
-            Int(args["SIX_MONTH_PERIOD"])
+            Int(args["PERIOD"])
         )
     )
     owed_coupon = App.localGet(Int(0), Bytes("CouponsPayed")) < coupon_round
@@ -124,6 +124,11 @@ def contract(args):
         Int(1)
     ])
 
+    # CLAIM DEFAULT: Stateless contract accounts verifies everything else
+    on_default = Seq([
+        Int(1)
+    ])
+
     # Can ignore creation since this program is used in update transaction
     # Fail on DeleteApplication and UpdateApplication
     # Else jump to corresponding handler
@@ -135,7 +140,8 @@ def contract(args):
         [Txn.application_args[0] == Bytes("buy"), on_buy],
         [Txn.application_args[0] == Bytes("trade"), on_trade],
         [Txn.application_args[0] == Bytes("coupon"), on_coupon],
-        [Txn.application_args[0] == Bytes("sell"), on_principal]
+        [Txn.application_args[0] == Bytes("sell"), on_principal],
+        [Txn.application_args[0] == Bytes("default"), on_default]
     )
 
     # Ensure call to contract is first (in atomic group)

@@ -8,11 +8,11 @@ const { assert } = require('chai');
 
 const MIN_BALANCE = 10e6; // 10 algo
 
-const SIX_MONTH_PERIOD = 15768000;
+const PERIOD = 15768000;
 const BOND_LENGTH = 2; // 1 year ie 2 six month periods
 const START_BUY_DATE = 50;
 const END_BUY_DATE = START_BUY_DATE + 50;
-const MATURITY_DATE = END_BUY_DATE + (SIX_MONTH_PERIOD * BOND_LENGTH);
+const MATURITY_DATE = END_BUY_DATE + (PERIOD * BOND_LENGTH);
 const BOND_COST = 50000000; // $50
 const BOND_COUPON = 2500000; // $2.5
 const BOND_PRINCIPAL = 100000000; // $100
@@ -110,12 +110,12 @@ describe('Green Bond Tests', function () {
       MAIN_APP_ID: mainAppId,
       STABLECOIN_ESCROW_ADDR: stablecoinEscrow.address,
       BOND_ESCROW_ADDR: bondEscrow.address,
-      SIX_MONTH_PERIOD: SIX_MONTH_PERIOD,
-      BOND_LENGTH: BOND_LENGTH, // 1 year ie 2 six month periods
+      PERIOD: PERIOD,
+      BOND_LENGTH: BOND_LENGTH,
       START_BUY_DATE: START_BUY_DATE,
       END_BUY_DATE: END_BUY_DATE,
       MATURITY_DATE: MATURITY_DATE,
-      BOND_COUPON: BOND_COUPON, // $2.5
+      BOND_COUPON: BOND_COUPON,
       BOND_PRINCIPAL: BOND_PRINCIPAL,
       ...params
     });
@@ -146,13 +146,13 @@ describe('Green Bond Tests', function () {
     updatedApprovalProgram = getProgram('greenBondApproval.py', {
       STABLECOIN_ESCROW_ADDR: stablecoinEscrow.address,
       BOND_ESCROW_ADDR: bondEscrow.address,
-      SIX_MONTH_PERIOD: SIX_MONTH_PERIOD,
-      BOND_LENGTH: BOND_LENGTH, // 1 year ie 2 six month periods
+      PERIOD: PERIOD,
+      BOND_LENGTH: BOND_LENGTH,
       START_BUY_DATE: START_BUY_DATE,
       END_BUY_DATE: END_BUY_DATE,
       MATURITY_DATE: MATURITY_DATE,
-      BOND_COST: BOND_COST, // $50
-      BOND_COUPON: BOND_COUPON, // $2.5
+      BOND_COST: BOND_COST,
+      BOND_COUPON: BOND_COUPON,
       BOND_PRINCIPAL: BOND_PRINCIPAL,
       ...params
     });
@@ -469,7 +469,7 @@ describe('Green Bond Tests', function () {
       buyBond(NUM_BONDS_BUYING, BOND_COST);
 
       // claim coupon
-      runtime.setRoundAndTimestamp(4, END_BUY_DATE + SIX_MONTH_PERIOD);
+      runtime.setRoundAndTimestamp(4, END_BUY_DATE + PERIOD);
       const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
       fundStablecoin(BOND_COST * NUM_BONDS_BUYING, stablecoinEscrowAddress);
 

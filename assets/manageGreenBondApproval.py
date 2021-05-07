@@ -26,7 +26,7 @@ def contract(args):
             Int(0),  # no coupons if before start date
             Div(
                 Global.latest_timestamp() - Int(args["END_BUY_DATE"]),
-                Int(args["SIX_MONTH_PERIOD"])
+                Int(args["PERIOD"])
             )
         )
 
