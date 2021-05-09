@@ -79,7 +79,6 @@ def contract(args):
     end_bond_transfer = And(
         Gtxn[2].asset_sender() == Gtxn[0].sender(),
         Gtxn[2].asset_receiver() == Gtxn[2].sender(),
-        Gtxn[2].asset_close_to() == Gtxn[2].sender()
     )
     # 3. transfer of USDC from stablecoin contract account to sender (verified in stablecoin escrow)
     # 4. fee of tx2

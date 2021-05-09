@@ -585,7 +585,7 @@ describe('Green Bond Tests', function () {
           recipient: bondEscrowAddress,
           amount: NUM_BONDS_BUYING,
           assetID: bondId,
-          payFlags: { totalFee: 1000, closeRemainderTo: bondEscrowAddress }
+          payFlags: { totalFee: 1000 }
         },
         {
           type: types.TransactionType.TransferAsset,
@@ -689,7 +689,7 @@ describe('Green Bond Tests', function () {
           recipient: bondEscrowAddress,
           amount: NUM_BONDS_BUYING,
           assetID: bondId,
-          payFlags: { totalFee: 1000, closeRemainderTo: bondEscrowAddress }
+          payFlags: { totalFee: 1000 }
         },
         {
           type: types.TransactionType.TransferAsset,
