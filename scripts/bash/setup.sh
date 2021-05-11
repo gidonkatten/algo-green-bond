@@ -17,6 +17,7 @@ gcmd="goal -d ../../net1/Primary"
 MASTER=$(${gcmd} account list|awk '{ print $3 }'|tail -1)
 ISSUER=$(${gcmd} account list|awk '{ print $3 }'|head -1)
 INVESTOR=$(${gcmd} account list|awk '{ print $3 }'|head -2|tail -1)
+GREEN_VERIFIER=$(${gcmd} account list|awk '{ print $3 }'|tail -2|head -1)
 
 # create assets
 BOND_TOTAL=5
@@ -62,6 +63,7 @@ echo "Stablecoin Stateless Contract Address = ${STABLECOIN_STATELESS_ADDRESS}"
 THOUSAND_ALGOS=1000000000
 ${gcmd} clerk send -a ${THOUSAND_ALGOS} -f ${MASTER} -t ${ISSUER}
 ${gcmd} clerk send -a ${THOUSAND_ALGOS} -f ${MASTER} -t ${INVESTOR}
+${gcmd} clerk send -a ${THOUSAND_ALGOS} -f ${MASTER} -t ${GREEN_VERIFIER}
 ${gcmd} clerk send -a ${THOUSAND_ALGOS} -f ${MASTER} -t ${BOND_STATELESS_ADDRESS}
 ${gcmd} clerk send -a ${THOUSAND_ALGOS} -f ${MASTER} -t ${STABLECOIN_STATELESS_ADDRESS}
 

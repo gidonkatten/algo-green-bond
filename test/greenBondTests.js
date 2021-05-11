@@ -21,12 +21,14 @@ const masterAddr = "A6BDLTPR4IEIZG4CCUGEXVMZSXTFO7RWNSOWHBWZL3CX2CLWTKW5FF4SE4";
 const issuerAddr = "EMO2JEPSRWNAJGR62S75GQ4ICOKVNI46AYRERZPJOWYUFEYEZJ6BU5GMXY";
 const investorAddr = "FCRSMPKRY5JPS4IQ2M7P4JRRIJSHRXL5S3NFTGHYP5GQD2XERNYUWEXG54";
 const traderAddr = "TWYS3Y6SJOUW6WIEIXTBOII7523QI4MUO3TSYDS7SCG4TIGGC2S6V6TJP4";
+const greenVerifierAddr = "OF6CYTCWXXZQCIFLUBNFZJ43V5BWZAL7BBMSQRIGUYQJVM63GIJ5SPA3JE";
 
 describe('Green Bond Tests', function () {
   let master = new AccountStore(1000e6, { addr: masterAddr, sk: new Uint8Array(0) });
   let issuer = new AccountStore(MIN_BALANCE, { addr: issuerAddr, sk: new Uint8Array(0) });
   let investor = new AccountStore(MIN_BALANCE, { addr: investorAddr, sk: new Uint8Array(0) });
   let trader = new AccountStore(MIN_BALANCE, { addr: traderAddr, sk: new Uint8Array(0) });
+  let greenVerifier = new AccountStore(MIN_BALANCE, { addr: greenVerifierAddr, sk: new Uint8Array(0) });
   let bondEscrow, bondEscrowLsig; // initialized later
   let stablecoinEscrow, stablecoinEscrowLsig; // initialized later
 
@@ -52,6 +54,7 @@ describe('Green Bond Tests', function () {
     issuer = runtime.getAccount(issuer.address);
     investor = runtime.getAccount(investor.address);
     trader = runtime.getAccount(trader.address);
+    greenVerifier = runtime.getAccount(greenVerifier.address);
     if (bondEscrow) bondEscrow = runtime.getAccount(bondEscrow.address);
     if (stablecoinEscrow) stablecoinEscrow = runtime.getAccount(stablecoinEscrow.address);
   }
@@ -210,7 +213,7 @@ describe('Green Bond Tests', function () {
   }
 
   this.beforeAll(async function () {
-    runtime = new Runtime([master, issuer, investor, trader]);
+    runtime = new Runtime([master, issuer, investor, trader, greenVerifier]);
 
     creationFlags = {
       sender: master.account,
@@ -230,7 +233,8 @@ describe('Green Bond Tests', function () {
     issuer = new AccountStore(MIN_BALANCE, { addr: issuerAddr, sk: new Uint8Array(0) });
     investor = new AccountStore(MIN_BALANCE, { addr: investorAddr, sk: new Uint8Array(0) });
     trader = new AccountStore(MIN_BALANCE, { addr: traderAddr, sk: new Uint8Array(0) });
-    runtime = new Runtime([master, issuer, investor, trader]);
+    greenVerifier = new AccountStore(MIN_BALANCE, { addr: greenVerifierAddr, sk: new Uint8Array(0) });
+    runtime = new Runtime([master, issuer, investor, trader, greenVerifier]);
 
     // setup and sync bond escrow account
     const bondEscrowProg = getProgram('bondEscrow.py');

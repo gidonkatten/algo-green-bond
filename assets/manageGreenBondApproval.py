@@ -59,8 +59,50 @@ def contract(args):
         stablecoin_escrow_balance.value() / Gtxn[3].asset_amount()
     )
 
-    # HANDLE NO OP
-    handle_no_op = Seq([
+    # RATE
+    round_passed = Btoi(Txn.application_args[1])
+    round_passed_stored = ScratchVar(TealType.uint64)
+    rating_passed = Btoi(Txn.application_args[2])
+    rating_passed_stored = ScratchVar(TealType.uint64)
+    # Verify round passed: 0 is 'Use of Proceeds', 1-BOND_LENGTH for coupon reporting
+    verify_round_passed = And(
+        round_passed_stored.load() >= Int(0),
+        round_passed_stored.load() <= Int(args["BOND_LENGTH"])
+    )
+    # Verify rating passed: 1-5 stars
+    verify_rating_passed = And(
+        rating_passed_stored.load() >= Int(1),
+        rating_passed_stored.load() <= Int(5)
+    )
+    # Combine
+    rate_verify = And(
+        verify_round_passed,
+        verify_rating_passed,
+        Txn.sender() == Addr(args["GREEN_VERIFIER_ADDR"])
+    )
+    # Can fit 8 single byte ints in global state value
+    array_slot = round_passed_stored.load() / Int(8)
+    index_slot = round_passed_stored.load() % Int(8)
+    array = App.globalGetEx(Int(0), Itob(array_slot))  # Initialise if needed
+    # Update
+    on_rate = Seq([
+        round_passed_stored.store(round_passed),
+        rating_passed_stored.store(rating_passed),
+        Assert(rate_verify),
+        array,
+        App.globalPut(
+            Itob(array_slot),
+            SetByte(
+                If(array.hasValue(), array.value(), Bytes("base16", "0x0000000000000000")),
+                index_slot,
+                rating_passed_stored.load()
+            )
+        ),
+        Int(1)
+    ])
+
+    # HANDLE DEFAULT
+    handle_default = Seq([
         Assert(
             And(
                 # Txn.applications[1] == Int(args["MAIN_APP_ID"]),  # TODO: TEAL 3
@@ -78,7 +120,7 @@ def contract(args):
         Cond(
             [Txn.application_args[0] == Bytes("defaulted"), has_defaulted_stored.load()],
             [Txn.application_args[0] == Bytes("not_defaulted"), Not(has_defaulted_stored.load())],
-            [Txn.application_args[0] == Bytes("claim_default"), has_defaulted_stored.load() & stablecoin_transfer],
+            [Txn.application_args[0] == Bytes("claim_default"), has_defaulted_stored.load() & stablecoin_transfer]
         )
     ])
 
@@ -88,7 +130,8 @@ def contract(args):
         [Txn.on_completion() == OnComplete.UpdateApplication, Int(0)],
         [Txn.on_completion() == OnComplete.CloseOut, Int(0)],
         [Txn.on_completion() == OnComplete.OptIn, Int(0)],
-        [Txn.on_completion() == OnComplete.NoOp, handle_no_op]
+        # [Txn.application_args[0] == Bytes("rate"), on_rate],  # TODO: TEAL 3
+        [Int(1), handle_default]
     )
 
     return program

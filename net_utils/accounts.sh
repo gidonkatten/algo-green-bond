@@ -3,6 +3,7 @@ gcmd="goal -d ../net1/Primary"
 MASTER=$(${gcmd} account list|awk '{ print $3 }'|tail -1)
 ISSUER=$(${gcmd} account list|awk '{ print $3 }'|head -1)
 INVESTOR=$(${gcmd} account list|awk '{ print $3 }'|head -2|tail -1)
+GREEN_VERIFIER=$(${gcmd} account list|awk '{ print $3 }'|tail -2|head -1)
 
 echo "Master Account Address = ${MASTER}"
 ${gcmd} account balance -a=${MASTER}
@@ -19,6 +20,12 @@ printf "\n\n\n"
 echo "Investor Account Address = ${INVESTOR}"
 ${gcmd} account balance -a=${INVESTOR}
 ${gcmd} account info -a=${INVESTOR}
+
+printf "\n\n\n"
+
+echo "Green Verifier Account Address = ${GREEN_VERIFIER}"
+${gcmd} account balance -a=${GREEN_VERIFIER}
+${gcmd} account info -a=${GREEN_VERIFIER}
 
 printf "\n\n\n"
 

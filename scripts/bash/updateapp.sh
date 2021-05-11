@@ -20,11 +20,16 @@ ISSUER=$(${gcmd} account list|awk '{ print $3 }'|head -1)
 INVESTOR=$(${gcmd} account list|awk '{ print $3 }'|head -2|tail -1)
 
 APP_ID=13
+MANAGE_APP_ID=14
 
-# update app
-NEW_TEAL_APPROVAL_PROG="../../generated-src/greenBondApproval.teal"
+MAIN_TEAL_APPROVAL_PROG="../../generated-src/greenBondApproval.teal"
 TEAL_CLEAR_PROG="../../generated-src/greenBondClear.teal"
-${gcmd} app update --app-id ${APP_ID} --approval-prog $NEW_TEAL_APPROVAL_PROG --clear-prog $TEAL_CLEAR_PROG --from ${MASTER}
+MANAGE_TEAL_APPROVAL_PROG="../../generated-src/manageGreenBondApproval.teal"
+
+# update apps
+${gcmd} app update --app-id ${APP_ID} --approval-prog $MAIN_TEAL_APPROVAL_PROG --clear-prog $TEAL_CLEAR_PROG --from ${MASTER}
+${gcmd} app update --app-id ${MANAGE_APP_ID} --approval-prog $MANAGE_TEAL_APPROVAL_PROG --clear-prog $TEAL_CLEAR_PROG --from ${MASTER}
 
 # Read global state of contract
 ${gcmd} app read --app-id ${APP_ID} --guess-format --global --from ${MASTER}
+${gcmd} app read --app-id ${MANAGE_APP_ID} --guess-format --global --from ${MASTER}
