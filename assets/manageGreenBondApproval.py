@@ -14,11 +14,7 @@ def contract(args):
     bond_total = AssetParam.total(Int(0))
     coupons_payed_total = App.globalGetEx(Int(1), Bytes("TotCouponsPayed"))
 
-    # Implementation
-    global_num_bonds_in_circ = Minus(
-        bond_total.value(),
-        bond_escrow_balance.value()
-    )
+    # Current coupon round, 0 if none and BOND_LENGTH if finished - stored
     coupon_round = If(
         Global.latest_timestamp() >= Int(args["MATURITY_DATE"]),
         Int(args["BOND_LENGTH"]),  # coupon round is max BOND_LENGTH
@@ -30,12 +26,18 @@ def contract(args):
                 Int(args["PERIOD"])
             )
         )
+    )
+    coupon_round_stored = ScratchVar(TealType.uint64)
 
+    # Implementation
+    global_num_bonds_in_circ = Minus(
+        bond_total.value(),
+        bond_escrow_balance.value()
     )
     global_coupon_value_owed_now = Mul(
         Int(args["BOND_COUPON"]),
         Minus(  # Total number of coupons unpaid until now
-            coupon_round * global_num_bonds_in_circ,
+            coupon_round_stored.load() * global_num_bonds_in_circ,
             coupons_payed_total.value()
         )
     )
@@ -65,10 +67,7 @@ def contract(args):
     rating_passed = Btoi(Txn.application_args[2])
     rating_passed_stored = ScratchVar(TealType.uint64)
     # Verify round passed: 0 is 'Use of Proceeds', 1-BOND_LENGTH for coupon reporting
-    verify_round_passed = And(
-        round_passed_stored.load() >= Int(0),
-        round_passed_stored.load() <= Int(args["BOND_LENGTH"])
-    )
+    verify_round_passed = round_passed_stored.load() == coupon_round_stored.load()
     # Verify rating passed: 1-5 stars
     verify_rating_passed = And(
         rating_passed_stored.load() >= Int(1),
@@ -98,11 +97,13 @@ def contract(args):
                 rating_passed_stored.load()
             )
         ),
-        Int(1)
+        Return(Int(1))
     ])
 
-    # HANDLE DEFAULT
-    handle_default = Seq([
+    # HANDLE NO OP
+    handle_no_op = Seq([
+        coupon_round_stored.store(coupon_round),
+        # If(Txn.application_args[0] == Bytes("rate"), on_rate),  # TODO: TEAL 3
         Assert(
             And(
                 # Txn.applications[1] == Int(args["MAIN_APP_ID"]),  # TODO: TEAL 3
@@ -130,8 +131,7 @@ def contract(args):
         [Txn.on_completion() == OnComplete.UpdateApplication, Int(0)],
         [Txn.on_completion() == OnComplete.CloseOut, Int(0)],
         [Txn.on_completion() == OnComplete.OptIn, Int(0)],
-        # [Txn.application_args[0] == Bytes("rate"), on_rate],  # TODO: TEAL 3
-        [Int(1), handle_default]
+        [Int(1), handle_no_op]
     )
 
     return program
