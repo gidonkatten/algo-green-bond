@@ -33,10 +33,7 @@ def contract(args):
     on_buy = And(linked_with_bond_escrow, in_buy_period)
 
     # TRADE: Stateless contract account verifies everything else
-    in_trade_window = And(
-        Global.latest_timestamp() > Int(args["END_BUY_DATE"]),
-        Global.latest_timestamp() < Int(args["MATURITY_DATE"]),
-    )
+    in_trade_window = Global.latest_timestamp() > Int(args["END_BUY_DATE"])
     # if receiver of bond already is an owner
     # then: verify receiver has same number of coupon payments as sender
     # else: set receiver's CouponsPayed to the sender's CouponsPayed
