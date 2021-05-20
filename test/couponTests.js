@@ -33,10 +33,21 @@ describe('Coupon Tests', function () {
   const getMainGlobal = (key) => runtime.getGlobalState(mainAppId, key);
   const getMainLocal = (addr, key) => runtime.getLocalState(mainAppId, addr, key);
 
+  // fetch latest account state
+  function syncAccounts () {
+    master = runtime.getAccount(masterAddr);
+    issuer = runtime.getAccount(issuerAddr);
+    investor = runtime.getAccount(investorAddr);
+    trader = runtime.getAccount(traderAddr);
+    greenVerifier = runtime.getAccount(greenVerifierAddr);
+    if (bondEscrow) bondEscrow = runtime.getAccount(bondEscrow.address);
+    if (stablecoinEscrow) stablecoinEscrow = runtime.getAccount(stablecoinEscrow.address);
+  }
+
   /**
    * This function buys bonds
    */
-  function buyBond(noOfBonds, bondCost) {
+  function buyBond(noOfBonds, bondCost, account) {
     const buyTxGroup = buyBondTxns(
       noOfBonds,
       bondCost,
@@ -44,7 +55,7 @@ describe('Coupon Tests', function () {
       bondId,
       stablecoinId,
       mainAppId,
-      investor.account,
+      account,
     )
 
     runtime.executeTx(buyTxGroup);
@@ -129,58 +140,204 @@ describe('Coupon Tests', function () {
 
   describe('claim_coupon', function () {
 
-    it('should be able to claim coupon', () => {
-      // setup
-      updateMainApp(runtime, masterAddr, mainAppId, {
-        MANAGE_APP_ID: manageAppId,
-        STABLECOIN_ESCROW_ADDR: stablecoinEscrow.address,
-        BOND_ESCROW_ADDR: bondEscrow.address,
+    const NUM_BONDS_OWNED = 3;
+
+    describe('without coupon', function () {
+
+      this.beforeEach(() => {
+        updateMainApp(runtime, masterAddr, mainAppId, {
+          MANAGE_APP_ID: manageAppId,
+          STABLECOIN_ESCROW_ADDR: stablecoinEscrow.address,
+          BOND_ESCROW_ADDR: bondEscrow.address,
+          BOND_COUPON: 0,
+        });
+        updateManageApp(runtime, masterAddr, manageAppId, {
+          MAIN_APP_ID: mainAppId,
+          STABLECOIN_ESCROW_ADDR: stablecoinEscrow.address,
+          BOND_ESCROW_ADDR: bondEscrow.address,
+          BOND_COUPON: 0,
+        });
+        runtime.optInToApp(investorAddr, mainAppId, {}, {});
+        runtime.setRoundAndTimestamp(3, START_BUY_DATE);
+        fundAsset(runtime, master.account, investorAddr, stablecoinId, BOND_COST * NUM_BONDS_OWNED);
+        buyBond(NUM_BONDS_OWNED, BOND_COST, investor.account);
       });
-      updateManageApp(runtime, masterAddr, manageAppId, {
-        MAIN_APP_ID: mainAppId,
-        STABLECOIN_ESCROW_ADDR: stablecoinEscrow.address,
-        BOND_ESCROW_ADDR: bondEscrow.address,
+
+      it('cannot claim coupon when 0 coupon', () => {
+        runtime.setRoundAndTimestamp(4, END_BUY_DATE + PERIOD);
+        const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
+        fundAsset(runtime, master.account, stablecoinEscrowAddress, stablecoinId, BOND_COUPON * NUM_BONDS_OWNED);
+
+        // Atomic Transaction
+        const claimCouponTxGroup = claimCouponTxns(
+          NUM_BONDS_OWNED,
+          BOND_COUPON,
+          stablecoinEscrowLsig,
+          bondEscrowLsig,
+          bondId,
+          stablecoinId,
+          mainAppId,
+          manageAppId,
+          investor.account
+        )
+        assert.throws(
+          () => runtime.executeTx(claimCouponTxGroup),
+          'RUNTIME_ERR1009: TEAL runtime encountered err opcode'
+        );
       });
-      runtime.optInToApp(investorAddr, mainAppId, {}, {});
-      runtime.setRoundAndTimestamp(3, START_BUY_DATE);
-      const NUM_BONDS_BUYING = 3;
-      fundAsset(runtime, master.account, investorAddr, stablecoinId, BOND_COST * NUM_BONDS_BUYING);
-      buyBond(NUM_BONDS_BUYING, BOND_COST);
-
-      // claim coupon
-      runtime.setRoundAndTimestamp(4, END_BUY_DATE + PERIOD);
-      const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
-      fundAsset(runtime, master.account, stablecoinEscrowAddress, stablecoinId, BOND_COUPON * NUM_BONDS_BUYING);
-
-      const initialInvestorStablecoinHolding = runtime.getAssetHolding(stablecoinId, investorAddr);
-      const initialEscrowStablecoinHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrowAddress);
-
-      // Atomic Transaction
-      const claimCouponTxGroup = claimCouponTxns(
-        NUM_BONDS_BUYING,
-        BOND_COUPON,
-        stablecoinEscrowLsig,
-        bondEscrowLsig,
-        bondId,
-        stablecoinId,
-        mainAppId,
-        manageAppId,
-        investor.account
-      )
-      runtime.executeTx(claimCouponTxGroup);
-
-      const localCouponsPayed = getMainLocal(investorAddr, 'CouponsPayed');
-      const totalCouponsPayed = getMainGlobal('TotCouponsPayed');
-      const afterInvestorStablecoinHolding = runtime.getAssetHolding(stablecoinId, investorAddr);
-      const afterEscrowStablecoinHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrowAddress);
-
-      assert.equal(localCouponsPayed, 1);
-      assert.equal(totalCouponsPayed, NUM_BONDS_BUYING);
-      assert.equal(afterInvestorStablecoinHolding.amount,
-        initialInvestorStablecoinHolding.amount + BigInt(NUM_BONDS_BUYING * BOND_COUPON));
-      assert.equal(afterEscrowStablecoinHolding.amount,
-        initialEscrowStablecoinHolding.amount - BigInt(NUM_BONDS_BUYING * BOND_COUPON));
     });
+
+    describe('with coupon', function () {
+
+      this.beforeEach(() => {
+        updateMainApp(runtime, masterAddr, mainAppId, {
+          MANAGE_APP_ID: manageAppId,
+          STABLECOIN_ESCROW_ADDR: stablecoinEscrow.address,
+          BOND_ESCROW_ADDR: bondEscrow.address,
+        });
+        updateManageApp(runtime, masterAddr, manageAppId, {
+          MAIN_APP_ID: mainAppId,
+          STABLECOIN_ESCROW_ADDR: stablecoinEscrow.address,
+          BOND_ESCROW_ADDR: bondEscrow.address,
+        });
+        runtime.optInToApp(investorAddr, mainAppId, {}, {});
+        runtime.setRoundAndTimestamp(3, START_BUY_DATE);
+        fundAsset(runtime, master.account, investorAddr, stablecoinId, BOND_COST * NUM_BONDS_OWNED);
+        buyBond(NUM_BONDS_OWNED, BOND_COST, investor.account);
+      });
+
+      it('cannot claim coupon before coupon date', () => {
+        runtime.setRoundAndTimestamp(4, END_BUY_DATE + PERIOD - 1);
+        const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
+        fundAsset(runtime, master.account, stablecoinEscrowAddress, stablecoinId, BOND_COUPON * NUM_BONDS_OWNED);
+
+        // Atomic Transaction
+        const claimCouponTxGroup = claimCouponTxns(
+          NUM_BONDS_OWNED,
+          BOND_COUPON,
+          stablecoinEscrowLsig,
+          bondEscrowLsig,
+          bondId,
+          stablecoinId,
+          mainAppId,
+          manageAppId,
+          investor.account
+        )
+        assert.throws(
+          () => runtime.executeTx(claimCouponTxGroup),
+          'RUNTIME_ERR1009: TEAL runtime encountered err opcode'
+        );
+      });
+
+      it('cannot claim coupon if dont cover txn fee', () => {
+        runtime.setRoundAndTimestamp(4, END_BUY_DATE + PERIOD);
+        const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
+        fundAsset(runtime, master.account, stablecoinEscrowAddress, stablecoinId, BOND_COUPON * NUM_BONDS_OWNED);
+
+        // Atomic Transaction
+        const claimCouponTxGroup = claimCouponTxns(
+          NUM_BONDS_OWNED,
+          BOND_COUPON,
+          stablecoinEscrowLsig,
+          bondEscrowLsig,
+          bondId,
+          stablecoinId,
+          mainAppId,
+          manageAppId,
+          investor.account
+        )
+        claimCouponTxGroup[2].amountMicroAlgos -= 1;
+        assert.throws(
+          () => runtime.executeTx(claimCouponTxGroup),
+          'RUNTIME_ERR1007: Teal code rejected by logic'
+        );
+      });
+
+      it('cannot claim coupon for not all your bonds owned', () => {
+        runtime.setRoundAndTimestamp(4, END_BUY_DATE + PERIOD);
+        const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
+        fundAsset(runtime, master.account, stablecoinEscrowAddress, stablecoinId, BOND_COUPON * NUM_BONDS_OWNED);
+
+        // Atomic Transaction
+        const claimCouponTxGroup = claimCouponTxns(
+          NUM_BONDS_OWNED - 1,
+          BOND_COUPON,
+          stablecoinEscrowLsig,
+          bondEscrowLsig,
+          bondId,
+          stablecoinId,
+          mainAppId,
+          manageAppId,
+          investor.account
+        )
+        assert.throws(
+          () => runtime.executeTx(claimCouponTxGroup),
+          'RUNTIME_ERR1009: TEAL runtime encountered err opcode'
+        );
+      });
+
+      it('cannot claim coupon if defaulted', () => {
+        runtime.setRoundAndTimestamp(4, END_BUY_DATE + 2 * PERIOD);
+        const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
+        fundAsset(runtime, master.account, stablecoinEscrowAddress, stablecoinId, BOND_COUPON * NUM_BONDS_OWNED);
+
+        syncAccounts();
+
+        // Atomic Transaction
+        const claimCouponTxGroup = claimCouponTxns(
+          NUM_BONDS_OWNED,
+          BOND_COUPON,
+          stablecoinEscrowLsig,
+          bondEscrowLsig,
+          bondId,
+          stablecoinId,
+          mainAppId,
+          manageAppId,
+          investor.account
+        )
+        assert.throws(
+          () => runtime.executeTx(claimCouponTxGroup),
+          'RUNTIME_ERR1007: Teal code rejected by logic'
+        );
+      });
+
+      it('can claim coupon', () => {
+        // claim coupon
+        runtime.setRoundAndTimestamp(4, END_BUY_DATE + PERIOD);
+        const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
+        fundAsset(runtime, master.account, stablecoinEscrowAddress, stablecoinId, BOND_COUPON * NUM_BONDS_OWNED);
+
+        const initialInvestorStablecoinHolding = runtime.getAssetHolding(stablecoinId, investorAddr);
+        const initialEscrowStablecoinHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrowAddress);
+
+        // Atomic Transaction
+        const claimCouponTxGroup = claimCouponTxns(
+          NUM_BONDS_OWNED,
+          BOND_COUPON,
+          stablecoinEscrowLsig,
+          bondEscrowLsig,
+          bondId,
+          stablecoinId,
+          mainAppId,
+          manageAppId,
+          investor.account
+        )
+        runtime.executeTx(claimCouponTxGroup);
+
+        const localCouponsPayed = getMainLocal(investorAddr, 'CouponsPayed');
+        const totalCouponsPayed = getMainGlobal('TotCouponsPayed');
+        const afterInvestorStablecoinHolding = runtime.getAssetHolding(stablecoinId, investorAddr);
+        const afterEscrowStablecoinHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrowAddress);
+
+        assert.equal(localCouponsPayed, 1);
+        assert.equal(totalCouponsPayed, NUM_BONDS_OWNED);
+        assert.equal(afterInvestorStablecoinHolding.amount,
+          initialInvestorStablecoinHolding.amount + BigInt(NUM_BONDS_OWNED * BOND_COUPON));
+        assert.equal(afterEscrowStablecoinHolding.amount,
+          initialEscrowStablecoinHolding.amount - BigInt(NUM_BONDS_OWNED * BOND_COUPON));
+      });
+    });
+
   });
 
 });
