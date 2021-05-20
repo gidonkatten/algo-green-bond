@@ -30,5 +30,6 @@ params = {
     "BOND_COST": 50000000,  # $50.000000
     "BOND_COUPON": 2500000,  # $2.500000 every 6 months for the BOND_LENGTH
     "BOND_PRINCIPAL": 100000000,  # $100.000000
+    'TRADE_PRICE': 80000000,  # $80.000000
 }
 

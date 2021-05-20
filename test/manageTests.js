@@ -1,4 +1,4 @@
-const { getProgram } = require('@algo-builder/algob');
+const { getProgram, stringToBytes } = require('@algo-builder/algob');
 const { Runtime, AccountStore, types } = require('@algo-builder/runtime');
 const { assert } = require('chai');
 const {
@@ -8,9 +8,13 @@ const {
   masterAddr,
   traderAddr,
   MIN_BALANCE,
+  PERIOD,
+  BOND_LENGTH,
   START_BUY_DATE,
+  END_BUY_DATE,
   MATURITY_DATE,
   BOND_COST,
+  BOND_COUPON,
   BOND_PRINCIPAL,
   mainStateStorage,
   manageStateStorage,
@@ -20,10 +24,9 @@ const {
   fundAlgo,
   fundAsset,
   buyBondTxns,
-  claimDefaultTxns
 } = require("./utils");
 
-describe('Default Tests', function () {
+describe('Manage Green Bond Tests', function () {
   let runtime;
   let master, issuer, investor, trader, greenVerifier;
   let bondEscrow, bondEscrowLsig, stablecoinEscrow, stablecoinEscrowLsig;
@@ -126,10 +129,27 @@ describe('Default Tests', function () {
     runtime.optIntoASA(stablecoinId, stablecoinEscrowAddress, {})
   });
 
-  describe('default', function () {
+  describe('Rating', function () {
 
-    it('should be able to claim default', () => {
-      // setup
+    beforeEach(() => {
+      updateManageApp(runtime, masterAddr, manageAppId, {
+        MAIN_APP_ID: mainAppId,
+        STABLECOIN_ESCROW_ADDR: stablecoinEscrow.address,
+        BOND_ESCROW_ADDR: bondEscrow.address,
+        BOND_COUPON: 0
+      });
+    });
+
+    // TODO: TEAL3
+
+  });
+
+
+  describe('Defaults', function () {
+
+    const NUM_BONDS_BUYING = 3;
+
+    beforeEach(() => {
       updateMainApp(runtime, masterAddr, mainAppId, {
         MANAGE_APP_ID: manageAppId,
         STABLECOIN_ESCROW_ADDR: stablecoinEscrow.address,
@@ -144,51 +164,95 @@ describe('Default Tests', function () {
       });
       runtime.optInToApp(investorAddr, mainAppId, {}, {});
       runtime.setRoundAndTimestamp(3, START_BUY_DATE);
-      const NUM_BONDS_BUYING = 3;
-      const defaultAmount = BOND_PRINCIPAL * NUM_BONDS_BUYING / 2;
       fundAsset(runtime, master.account, investorAddr, stablecoinId, BOND_COST * NUM_BONDS_BUYING);
       buyBond(NUM_BONDS_BUYING, BOND_COST);
-
-      // claim default
-      runtime.setRoundAndTimestamp(4, MATURITY_DATE);
-      const bondEscrowAddress = bondEscrowLsig.address();
-      const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
-      fundAsset(runtime, master.account, stablecoinEscrowAddress, stablecoinId, defaultAmount);
-
-      const initialEscrowBondHolding = runtime.getAssetHolding(bondId, bondEscrowAddress);
-      const initialInvestorStablecoinHolding = runtime.getAssetHolding(stablecoinId, investorAddr);
-      const initialEscrowStablecoinHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrowAddress);
-
-      // Atomic Transaction
-      const claimDefaultTxGroup = claimDefaultTxns(
-        NUM_BONDS_BUYING,
-        defaultAmount,
-        stablecoinEscrowLsig,
-        bondEscrowLsig,
-        bondId,
-        stablecoinId,
-        mainAppId,
-        manageAppId,
-        investor.account,
-      )
-
-      runtime.executeTx(claimDefaultTxGroup);
-
-      const localCouponsPayed = getMainLocal(investorAddr, 'CouponsPayed');
-      const investorBondHolding = runtime.getAssetHolding(bondId, investorAddr);
-      const afterEscrowBondHolding = runtime.getAssetHolding(bondId, bondEscrowAddress);
-      const afterInvestorStablecoinHolding = runtime.getAssetHolding(stablecoinId, investorAddr);
-      const afterEscrowStablecoinHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrowAddress);
-
-      assert.isUndefined(localCouponsPayed);
-      assert.equal(investorBondHolding.amount, 0);
-      assert.equal(afterEscrowBondHolding.amount,
-        initialEscrowBondHolding.amount + BigInt(NUM_BONDS_BUYING));
-      assert.equal(afterInvestorStablecoinHolding.amount,
-        initialInvestorStablecoinHolding.amount + BigInt((NUM_BONDS_BUYING * BOND_PRINCIPAL) / 2));
-      assert.equal(afterEscrowStablecoinHolding.amount,
-        initialEscrowStablecoinHolding.amount - BigInt((NUM_BONDS_BUYING * BOND_PRINCIPAL) / 2));
     });
+
+    describe('has defaulted', function () {
+
+      it('yes passes', () => {
+        // Set time to when have money to owe
+        runtime.setRoundAndTimestamp(5, MATURITY_DATE);
+        const stablecoinEscrowHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrow.address);
+        assert.equal(stablecoinEscrowHolding.amount, 0);
+
+        runtime.executeTx({
+          type: types.TransactionType.CallNoOpSSC,
+          sign: types.SignType.SecretKey,
+          fromAccount: investor.account,
+          appId: manageAppId,
+          payFlags: {},
+          appArgs: [stringToBytes("defaulted")],
+          accounts: [stablecoinEscrow.address, bondEscrow.address],
+          foreignApps: [mainAppId],
+          foreignAssets: [bondId]
+        })
+      });
+
+      it('no fails', () => {
+        // Set time to when have money to owe
+        runtime.setRoundAndTimestamp(5, MATURITY_DATE);
+        const stablecoinEscrowHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrow.address);
+        assert.equal(stablecoinEscrowHolding.amount, 0);
+
+        assert.throws(() => {
+          runtime.executeTx({
+            type: types.TransactionType.CallNoOpSSC,
+            sign: types.SignType.SecretKey,
+            fromAccount: investor.account,
+            appId: manageAppId,
+            payFlags: {},
+            appArgs: [stringToBytes("not_defaulted")],
+            accounts: [stablecoinEscrow.address, bondEscrow.address],
+            foreignApps: [mainAppId],
+            foreignAssets: [bondId]
+          })
+        }, 'RUNTIME_ERR1007: Teal code rejected by logic');
+      });
+    });
+
+
+    describe('has not defaulted', function () {
+
+      it('no passes', () => {
+        // Set time to when have money to owe
+        runtime.setRoundAndTimestamp(5, MATURITY_DATE);
+        fundAsset(runtime, master.account, stablecoinEscrow.address, stablecoinId, 10000000000);
+
+        runtime.executeTx({
+          type: types.TransactionType.CallNoOpSSC,
+          sign: types.SignType.SecretKey,
+          fromAccount: investor.account,
+          appId: manageAppId,
+          payFlags: {},
+          appArgs: [stringToBytes("not_defaulted")],
+          accounts: [stablecoinEscrow.address, bondEscrow.address],
+          foreignApps: [mainAppId],
+          foreignAssets: [bondId]
+        })
+      });
+
+      it('yes fails', () => {
+        // Set time to when have money to owe
+        runtime.setRoundAndTimestamp(5, MATURITY_DATE);
+        fundAsset(runtime, master.account, stablecoinEscrow.address, stablecoinId, 10000000000);
+
+        assert.throws(() => {
+          runtime.executeTx({
+            type: types.TransactionType.CallNoOpSSC,
+            sign: types.SignType.SecretKey,
+            fromAccount: investor.account,
+            appId: manageAppId,
+            payFlags: {},
+            appArgs: [stringToBytes("defaulted")],
+            accounts: [stablecoinEscrow.address, bondEscrow.address],
+            foreignApps: [mainAppId],
+            foreignAssets: [bondId]
+          })
+        }, 'RUNTIME_ERR1007: Teal code rejected by logic');
+      });
+    });
+
   });
 
 });

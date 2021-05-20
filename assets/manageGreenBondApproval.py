@@ -67,7 +67,17 @@ def contract(args):
     rating_passed = Btoi(Txn.application_args[2])
     rating_passed_stored = ScratchVar(TealType.uint64)
     # Verify round passed: 0 is 'Use of Proceeds', 1-BOND_LENGTH for coupon reporting
-    verify_round_passed = round_passed_stored.load() == coupon_round_stored.load()
+    verify_round_passed = Or(
+        And(
+            Global.latest_timestamp() < Int(args["START_BUY_DATE"]),
+            round_passed_stored.load() == Int(0)
+        ),
+        And(
+            Global.latest_timestamp() >= Int(args["END_BUY_DATE"]),
+            Global.latest_timestamp() < Int(args["MATURITY_DATE"]),
+            round_passed_stored.load() == (coupon_round_stored.load() + Int(1))
+        )
+    )
     # Verify rating passed: 1-5 stars
     verify_rating_passed = And(
         rating_passed_stored.load() >= Int(1),

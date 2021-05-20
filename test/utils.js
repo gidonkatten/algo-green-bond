@@ -100,7 +100,7 @@ function fundAlgo(runtime, fromAccount, toAccountAddr, amount) {
     fromAccount,
     toAccountAddr,
     amountMicroAlgos: amount,
-    payFlags: {}
+    payFlags: { totalFee: 1000 }
   });
 }
 
@@ -115,7 +115,7 @@ function fundAsset(runtime, fromAccount, toAccountAddr, assetID, amount) {
     toAccountAddr,
     amount,
     assetID,
-    payFlags: {}
+    payFlags: { totalFee: 1000 }
   });
 }
 
@@ -140,7 +140,7 @@ function buyBondTxns(
       sign: types.SignType.SecretKey,
       fromAccount: investorAcc,
       appId: mainAppId,
-      payFlags: {},
+      payFlags: { totalFee: 1000 },
       appArgs: [stringToBytes('buy')]
     },
     {
@@ -175,6 +175,109 @@ function buyBondTxns(
 }
 
 /**
+ * Generates atomic txns to trade bond
+ */
+function tradeTxns(
+  noOfBonds,
+  bondEscrowLsig,
+  bondId,
+  mainAppId,
+  investorAcc,
+) {
+  const bondEscrowAddr = bondEscrowLsig.address();
+
+  return [
+    {
+      type: types.TransactionType.CallNoOpSSC,
+      sign: types.SignType.SecretKey,
+      fromAccount: investorAcc,
+      appId: mainAppId,
+      payFlags: { totalFee: 1000 },
+      appArgs: [stringToBytes('trade')],
+      accounts: [traderAddr]
+    },
+    {
+      type: types.TransactionType.TransferAlgo,
+      sign: types.SignType.SecretKey,
+      fromAccount: investorAcc,
+      toAccountAddr: bondEscrowAddr,
+      amountMicroAlgos: 1000,
+      payFlags: { totalFee: 1000 }
+    },
+    {
+      type: types.TransactionType.RevokeAsset,
+      sign: types.SignType.LogicSignature,
+      fromAccountAddr: bondEscrowAddr,
+      lsig: bondEscrowLsig,
+      revocationTarget: investorAcc.addr,
+      recipient: traderAddr,
+      amount: noOfBonds,
+      assetID: bondId,
+      payFlags: { totalFee: 1000 }
+    }
+  ];
+}
+
+/**
+ * Generates atomic txns to trade bond
+ */
+function tradeTxnsUsingLsig(
+  noOfBonds,
+  price,
+  tradeLsig,
+  bondEscrowLsig,
+  bondId,
+  stablecoinId,
+  mainAppId,
+  traderAcc,
+  sellerAddr,
+) {
+  const bondEscrowAddr = bondEscrowLsig.address();
+
+  return [
+    {
+      type: types.TransactionType.CallNoOpSSC,
+      sign: types.SignType.LogicSignature,
+      fromAccountAddr: sellerAddr,
+      lsig: tradeLsig,
+      appId: mainAppId,
+      payFlags: { totalFee: 1000 },
+      appArgs: [stringToBytes('trade')],
+      accounts: [traderAddr],
+    },
+    {
+      type: types.TransactionType.TransferAlgo,
+      sign: types.SignType.LogicSignature,
+      fromAccountAddr: sellerAddr,
+      lsig: tradeLsig,
+      toAccountAddr: bondEscrowAddr,
+      amountMicroAlgos: 1000,
+      payFlags: { totalFee: 1000 }
+    },
+    {
+      type: types.TransactionType.RevokeAsset,
+      sign: types.SignType.LogicSignature,
+      fromAccountAddr: bondEscrowAddr,
+      lsig: bondEscrowLsig,
+      revocationTarget: sellerAddr,
+      recipient: traderAddr,
+      amount: noOfBonds,
+      assetID: bondId,
+      payFlags: { totalFee: 1000 }
+    },
+    {
+      type: types.TransactionType.TransferAsset,
+      sign: types.SignType.SecretKey,
+      fromAccount: traderAcc,
+      toAccountAddr: sellerAddr,
+      amount: noOfBonds * price,
+      assetID: stablecoinId,
+      payFlags: { totalFee: 1000 }
+    }
+  ];
+}
+
+/**
  * Generates atomic txns to claim coupon
  */
 function claimCouponTxns(
@@ -197,7 +300,7 @@ function claimCouponTxns(
       sign: types.SignType.SecretKey,
       fromAccount: investorAcc,
       appId: mainAppId,
-      payFlags: {},
+      payFlags: { totalFee: 1000 },
       appArgs: [stringToBytes('coupon')]
     },
     {
@@ -205,7 +308,7 @@ function claimCouponTxns(
       sign: types.SignType.SecretKey,
       fromAccount: investorAcc,
       appId: manageAppId,
-      payFlags: {},
+      payFlags: { totalFee: 1000 },
       appArgs: [stringToBytes("not_defaulted")],
       accounts: [stablecoinEscrowAddr, bondEscrowAddr],
       foreignApps: [mainAppId],
@@ -255,7 +358,7 @@ function claimPrincipalTxns(
       sign: types.SignType.SecretKey,
       fromAccount: investorAcc,
       appId: mainAppId,
-      payFlags: {},
+      payFlags: { totalFee: 1000 },
       appArgs: [stringToBytes('sell')]
     },
     {
@@ -263,7 +366,7 @@ function claimPrincipalTxns(
       sign: types.SignType.SecretKey,
       fromAccount: investorAcc,
       appId: manageAppId,
-      payFlags: {},
+      payFlags: { totalFee: 1000 },
       appArgs: [stringToBytes("not_defaulted")],
       accounts: [stablecoinEscrowAddr, bondEscrowAddr],
       foreignApps: [mainAppId],
@@ -332,7 +435,7 @@ function claimDefaultTxns(
       sign: types.SignType.SecretKey,
       fromAccount: investorAcc,
       appId: mainAppId,
-      payFlags: {},
+      payFlags: { totalFee: 1000 },
       appArgs: [stringToBytes('default')]
     },
     {
@@ -340,7 +443,7 @@ function claimDefaultTxns(
       sign: types.SignType.SecretKey,
       fromAccount: investorAcc,
       appId: manageAppId,
-      payFlags: {},
+      payFlags: { totalFee: 1000 },
       appArgs: [stringToBytes("claim_default")],
       accounts: [stablecoinEscrowAddr, bondEscrowAddr],
       foreignApps: [mainAppId],
@@ -409,6 +512,8 @@ module.exports = {
   fundAlgo,
   fundAsset,
   buyBondTxns,
+  tradeTxns,
+  tradeTxnsUsingLsig,
   claimCouponTxns,
   claimPrincipalTxns,
   claimDefaultTxns

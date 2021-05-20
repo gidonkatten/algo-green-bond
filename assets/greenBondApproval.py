@@ -32,6 +32,12 @@ def contract(args):
     #
     on_buy = And(linked_with_bond_escrow, in_buy_period)
 
+    # SET TRADE: arg is number of bonds willing to trade
+    on_set_trade = Seq([
+        App.localPut(Int(0), Bytes("trade"), Btoi(Txn.application_args[1])),
+        Int(1)
+    ])
+
     # TRADE: Stateless contract account verifies everything else
     in_trade_window = Global.latest_timestamp() > Int(args["END_BUY_DATE"])
     # if receiver of bond already is an owner
@@ -53,17 +59,36 @@ def contract(args):
             )
         )
     ])
+    # update number of bonds owner willing to trade
+    # will fail with negative unit if trading too many bonds
+    update_trade = App.localPut(
+        Int(0),
+        Bytes("trade"),
+        App.localGet(Int(0), Bytes("trade")) - Gtxn[2].asset_amount()
+    )
     #
     on_trade = Seq([
         Assert(And(linked_with_bond_escrow, in_trade_window)),
         has_same_num_installments,
+        update_trade,
         Int(1)
     ])
 
     # CLAIM COUPON: Stateless contract accounts verifies everything else
+    # check star rating
+    coupons_payed = App.localGet(Int(0), Bytes("CouponsPayed"))
+    array_slot = (coupons_payed + Int(1)) / Int(8)
+    index_slot = (coupons_payed + Int(1)) % Int(8)
+    array = App.globalGetEx(Int(0), Itob(array_slot))  # May need to initialise
+    star_rating = GetByte(  # TODO: How to treat star rating of 0?
+         If(array.hasValue(), array.value(), Bytes("base16", "0x0000000000000000")),
+         index_slot
+    )
+
     # verify transfer of USDC is correct amount
     coupon_stablecoin_transfer = Gtxn[3].asset_amount() == Mul(
-        Int(args["BOND_COUPON"]),
+        # Int(args["BOND_COUPON"]) * star_rating * Int(11) / Int(10),  # Increase by 10% for every dropped star
+        Int(args["BOND_COUPON"]),  # TODO: Delete for TEAL3
         sender_bond_balance.value()
     )
     # verify have not already claimed coupon:
@@ -75,9 +100,10 @@ def contract(args):
             Int(args["PERIOD"])
         )
     )
-    owed_coupon = App.localGet(Int(0), Bytes("CouponsPayed")) < coupon_round
+    owed_coupon = coupons_payed < coupon_round
     # Combine
     coupon_verify = And(
+        # Txn.applications[1] == Int(args["MANAGE_APP_ID"]),  # TODO: TEAL 3
         coupon_stablecoin_transfer,
         owed_coupon,
         linked_with_stablecoin_escrow
@@ -85,6 +111,7 @@ def contract(args):
     # Update how many bond coupon payments locally and globally
     on_coupon = Seq([
         sender_bond_balance,
+        array,
         Assert(coupon_verify),
         App.localPut(
             Int(0),
@@ -153,6 +180,7 @@ def contract(args):
         [Txn.on_completion() == OnComplete.CloseOut, on_closeout],
         [Txn.on_completion() == OnComplete.OptIn, on_opt_in],
         [Txn.application_args[0] == Bytes("buy"), on_buy],
+        [Txn.application_args[0] == Bytes("set_trade"), on_set_trade],
         [Txn.application_args[0] == Bytes("trade"), on_trade],
         [Txn.application_args[0] == Bytes("coupon"), on_coupon],
         [Txn.application_args[0] == Bytes("sell"), on_principal],

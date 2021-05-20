@@ -17,17 +17,31 @@ const {
   updateMainApp,
   fundAlgo,
   fundAsset,
-  buyBondTxns
+  buyBondTxns,
+  tradeTxns,
+  tradeTxnsUsingLsig
 } = require("./utils");
 
 describe('Trade Tests', function () {
   let runtime;
   let master, issuer, investor, trader, greenVerifier;
+  let investorAddr;
   let bondEscrow, bondEscrowLsig, stablecoinEscrow, stablecoinEscrowLsig;
   let mainAppId, manageAppId, bondId, stablecoinId;
 
   const getMainGlobal = (key) => runtime.getGlobalState(mainAppId, key);
   const getMainLocal = (addr, key) => runtime.getLocalState(mainAppId, addr, key);
+
+  // fetch latest account state
+  function syncAccounts () {
+    master = runtime.getAccount(masterAddr);
+    issuer = runtime.getAccount(issuerAddr);
+    investor = runtime.getAccount(investorAddr);
+    trader = runtime.getAccount(traderAddr);
+    greenVerifier = runtime.getAccount(greenVerifierAddr);
+    if (bondEscrow) bondEscrow = runtime.getAccount(bondEscrow.address);
+    if (stablecoinEscrow) stablecoinEscrow = runtime.getAccount(stablecoinEscrow.address);
+  }
 
   /**
    * This function buys bonds
@@ -53,7 +67,8 @@ describe('Trade Tests', function () {
     // refresh accounts + initialize runtime
     master = new AccountStore(1000e6, { addr: masterAddr, sk: new Uint8Array(0) });
     issuer = new AccountStore(MIN_BALANCE, { addr: issuerAddr, sk: new Uint8Array(0) });
-    investor = new AccountStore(MIN_BALANCE, { addr: investorAddr, sk: new Uint8Array(0) });
+    investor = new AccountStore(MIN_BALANCE);
+    investorAddr = investor.address;
     trader = new AccountStore(MIN_BALANCE, { addr: traderAddr, sk: new Uint8Array(0) });
     greenVerifier = new AccountStore(MIN_BALANCE, { addr: greenVerifierAddr, sk: new Uint8Array(0) });
     runtime = new Runtime([master, issuer, investor, trader, greenVerifier]);
@@ -87,8 +102,9 @@ describe('Trade Tests', function () {
     // Create bond, opt-in, fund and configure
     bondId = runtime.addAsset("bond", { creator: { ...master.account, name: 'master' } });
 
-    runtime.optIntoASA(bondId, investorAddr, {})
-    runtime.optIntoASA(bondId, bondEscrowAddress, {})
+    runtime.optIntoASA(bondId, investorAddr, {});
+    runtime.optIntoASA(bondId, traderAddr, {});
+    runtime.optIntoASA(bondId, bondEscrowAddress, {});
 
     runtime.executeTx({
       type: types.TransactionType.RevokeAsset,
@@ -120,76 +136,332 @@ describe('Trade Tests', function () {
 
     runtime.optIntoASA(stablecoinId, issuerAddr, {})
     runtime.optIntoASA(stablecoinId, investorAddr, {})
+    runtime.optIntoASA(stablecoinId, traderAddr, {})
     runtime.optIntoASA(stablecoinId, stablecoinEscrowAddress, {})
   });
 
   describe('trade', function () {
 
-    it('should be able to trade bond', () => {
-      // setup
+    const NUM_BONDS_BUYING = 3;
+    const NUM_BONDS_TRADING = 2;
+    const WILLING_TO_TRADE = 3;
+
+    this.beforeEach(() => {
       updateMainApp(runtime, masterAddr, mainAppId, {
         MANAGE_APP_ID: manageAppId,
         STABLECOIN_ESCROW_ADDR: stablecoinEscrow.address,
         BOND_ESCROW_ADDR: bondEscrow.address,
       });
+
       runtime.optInToApp(investorAddr, mainAppId, {}, {});
+      runtime.optInToApp(traderAddr, mainAppId, {}, {});
+
       runtime.setRoundAndTimestamp(3, START_BUY_DATE);
-      const NUM_BONDS_BUYING = 3;
       fundAsset(runtime, master.account, investorAddr, stablecoinId, BOND_COST * NUM_BONDS_BUYING);
       buyBond(NUM_BONDS_BUYING, BOND_COST);
+    });
 
-      runtime.optInToApp(traderAddr, mainAppId, {}, {});
-      runtime.optIntoASA(bondId, traderAddr, {})
-
-      // trade
+    it('cannot trade bond when owner is unwilling to trade', () => {
       runtime.setRoundAndTimestamp(4, END_BUY_DATE + 1);
 
-      const bondEscrowAddress = bondEscrowLsig.address();
-      const NUM_BONDS_TRADING = 2;
-
-      const initialInvestorBondsHolding = runtime.getAssetHolding(bondId, investorAddr);
-
       // Atomic Transaction
-      const tradeTxGroup = [
-        {
+      const tradeTxGroup = tradeTxns(
+        NUM_BONDS_TRADING,
+        bondEscrowLsig,
+        bondId,
+        mainAppId,
+        investor.account,
+      )
+      assert.throws(
+        () => runtime.executeTx(tradeTxGroup),
+        'RUNTIME_ERR1005: Result of current operation caused integer underflow'
+      );
+    });
+
+    describe('when willing to trade', function () {
+
+      this.beforeEach(() => {
+        runtime.executeTx({
           type: types.TransactionType.CallNoOpSSC,
           sign: types.SignType.SecretKey,
           fromAccount: investor.account,
           appId: mainAppId,
           payFlags: {},
-          appArgs: [stringToBytes('trade')],
-          accounts: [traderAddr]
-        },
-        {
-          type: types.TransactionType.TransferAlgo,
-          sign: types.SignType.SecretKey,
-          fromAccount: investor.account,
-          toAccountAddr: bondEscrowAddress,
-          amountMicroAlgos: 1000,
-          payFlags: { totalFee: 1000 }
-        },
-        {
-          type: types.TransactionType.RevokeAsset,
-          sign: types.SignType.LogicSignature,
-          fromAccountAddr: bondEscrowAddress,
-          lsig: bondEscrowLsig,
-          revocationTarget: investorAddr,
-          recipient: traderAddr,
-          amount: NUM_BONDS_TRADING,
-          assetID: bondId,
-          payFlags: { totalFee: 1000 }
-        }
-      ];
+          appArgs: [stringToBytes('set_trade'), 'int:' + WILLING_TO_TRADE],
+        });
+      });
 
-      runtime.executeTx(tradeTxGroup);
+      it('can set amount willing to trade', () => {
+        const localTrade = getMainLocal(investorAddr, 'trade');
+        assert.equal(localTrade, WILLING_TO_TRADE);
+      });
 
-      // verify traded
-      const afterInvestorBondsHolding = runtime.getAssetHolding(bondId, investorAddr);
-      const traderBondHolding = runtime.getAssetHolding(bondId, traderAddr);
+      it('cannot trade bond before or at end buy date', () => {
+        runtime.setRoundAndTimestamp(4, END_BUY_DATE);
+        const tradeTxGroup = tradeTxns(
+          NUM_BONDS_TRADING,
+          bondEscrowLsig,
+          bondId,
+          mainAppId,
+          investor.account,
+        )
+        assert.throws(
+          () => runtime.executeTx(tradeTxGroup),
+          'RUNTIME_ERR1009: TEAL runtime encountered err opcode'
+        );
+      });
 
-      assert.equal(afterInvestorBondsHolding.amount,
-        initialInvestorBondsHolding.amount - BigInt(NUM_BONDS_TRADING));
-      assert.equal(traderBondHolding.amount, NUM_BONDS_TRADING);
+      it('cannot trade bond if dont cover txn fee', () => {
+        runtime.setRoundAndTimestamp(4, END_BUY_DATE + 1);
+        const tradeTxGroup = tradeTxns(
+          NUM_BONDS_TRADING,
+          bondEscrowLsig,
+          bondId,
+          mainAppId,
+          investor.account,
+        )
+        tradeTxGroup[1].amountMicroAlgos -= 1;
+        assert.throws(
+          () => runtime.executeTx(tradeTxGroup),
+          'RUNTIME_ERR1007: Teal code rejected by logic'
+        );
+      });
+
+      it('owner can trade bond', () => {
+        runtime.setRoundAndTimestamp(4, END_BUY_DATE + 1);
+        const initialInvestorBondsHolding = runtime.getAssetHolding(bondId, investorAddr);
+
+        // Atomic Transaction
+        const tradeTxGroup = tradeTxns(
+          NUM_BONDS_TRADING,
+          bondEscrowLsig,
+          bondId,
+          mainAppId,
+          investor.account,
+        )
+        runtime.executeTx(tradeTxGroup);
+
+        // verify traded
+        const afterInvestorBondsHolding = runtime.getAssetHolding(bondId, investorAddr);
+        const traderBondHolding = runtime.getAssetHolding(bondId, traderAddr);
+        const localTrade = getMainLocal(investorAddr, 'trade');
+
+        assert.equal(afterInvestorBondsHolding.amount,
+          initialInvestorBondsHolding.amount - BigInt(NUM_BONDS_TRADING));
+        assert.equal(traderBondHolding.amount, NUM_BONDS_TRADING);
+        assert.equal(localTrade, WILLING_TO_TRADE - NUM_BONDS_TRADING);
+      });
+
+      describe('using logic sig', function () {
+
+        const TRADE_PRICE = 70e6;
+
+        it('cannot trade bond if past expiry', () => {
+          const tradeLsigProg = getProgram('tradeLsig.py', {
+            MAIN_APP_ID: mainAppId,
+            MANAGE_APP_ID: manageAppId,
+            LV: 1,
+            TRADE_PRICE
+          });
+          const tradeLsig = runtime.getLogicSig(tradeLsigProg, []);
+          tradeLsig.sign(investor.account.sk);
+
+          runtime.setRoundAndTimestamp(4, END_BUY_DATE + 1);
+          fundAsset(runtime, master.account, traderAddr, stablecoinId, TRADE_PRICE * NUM_BONDS_TRADING);
+
+          // Atomic Transaction
+          const tradeTxGroup = tradeTxnsUsingLsig(
+            NUM_BONDS_TRADING,
+            TRADE_PRICE,
+            tradeLsig,
+            bondEscrowLsig,
+            bondId,
+            stablecoinId,
+            mainAppId,
+            trader.account,
+            investorAddr
+          )
+          assert.throws(
+            () => runtime.executeTx(tradeTxGroup),
+            'RUNTIME_ERR1007: Teal code rejected by logic'
+          );
+        });
+
+        it('cannot trade bond if paying below trade price', () => {
+          const tradeLsigProg = getProgram('tradeLsig.py', {
+            MAIN_APP_ID: mainAppId,
+            MANAGE_APP_ID: manageAppId,
+            LV: 1500,
+            TRADE_PRICE: TRADE_PRICE
+          });
+          const tradeLsig = runtime.getLogicSig(tradeLsigProg, []);
+          tradeLsig.sign(investor.account.sk);
+
+          runtime.setRoundAndTimestamp(4, END_BUY_DATE + 1);
+          fundAsset(runtime, master.account, traderAddr, stablecoinId, TRADE_PRICE * NUM_BONDS_TRADING);
+
+          // Atomic Transaction
+          const tradeTxGroup = tradeTxnsUsingLsig(
+            NUM_BONDS_TRADING,
+            TRADE_PRICE - 1,
+            tradeLsig,
+            bondEscrowLsig,
+            bondId,
+            stablecoinId,
+            mainAppId,
+            trader.account,
+            investorAddr
+          )
+          assert.throws(
+            () => runtime.executeTx(tradeTxGroup),
+            'RUNTIME_ERR1007: Teal code rejected by logic'
+          );
+        });
+
+        it('cannot trade bond if over pay fee txn', () => {
+          const tradeLsigProg = getProgram('tradeLsig.py', {
+            MAIN_APP_ID: mainAppId,
+            MANAGE_APP_ID: manageAppId,
+            LV: 1500,
+            TRADE_PRICE
+          });
+          const tradeLsig = runtime.getLogicSig(tradeLsigProg, [])
+          tradeLsig.sign(investor.account.sk);
+
+          runtime.setRoundAndTimestamp(4, END_BUY_DATE + 1);
+          fundAsset(runtime, master.account, traderAddr, stablecoinId, TRADE_PRICE * NUM_BONDS_TRADING);
+
+          // Atomic Transaction
+          const tradeTxGroup = tradeTxnsUsingLsig(
+            NUM_BONDS_TRADING,
+            TRADE_PRICE,
+            tradeLsig,
+            bondEscrowLsig,
+            bondId,
+            stablecoinId,
+            mainAppId,
+            trader.account,
+            investorAddr
+          )
+          tradeTxGroup[1].amountMicroAlgos += 1;
+          assert.throws(
+            () => runtime.executeTx(tradeTxGroup),
+            'RUNTIME_ERR1007: Teal code rejected by logic'
+          );
+        });
+
+        it('cannot trade bond if over pay ssc call fee', () => {
+          const tradeLsigProg = getProgram('tradeLsig.py', {
+            MAIN_APP_ID: mainAppId,
+            MANAGE_APP_ID: manageAppId,
+            LV: 1500,
+            TRADE_PRICE
+          });
+          const tradeLsig = runtime.getLogicSig(tradeLsigProg, [])
+          tradeLsig.sign(investor.account.sk);
+
+          runtime.setRoundAndTimestamp(4, END_BUY_DATE + 1);
+          fundAsset(runtime, master.account, traderAddr, stablecoinId, TRADE_PRICE * NUM_BONDS_TRADING);
+
+          // Atomic Transaction
+          const tradeTxGroup = tradeTxnsUsingLsig(
+            NUM_BONDS_TRADING,
+            TRADE_PRICE,
+            tradeLsig,
+            bondEscrowLsig,
+            bondId,
+            stablecoinId,
+            mainAppId,
+            trader.account,
+            investorAddr
+          )
+          tradeTxGroup[0].payFlags.totalFee += 1;
+          assert.throws(
+            () => runtime.executeTx(tradeTxGroup),
+            'RUNTIME_ERR1007: Teal code rejected by logic'
+          );
+        });
+
+        it('cannot trade bond if over pay txn fee fee', () => {
+          const tradeLsigProg = getProgram('tradeLsig.py', {
+            MAIN_APP_ID: mainAppId,
+            MANAGE_APP_ID: manageAppId,
+            LV: 1500,
+            TRADE_PRICE
+          });
+          const tradeLsig = runtime.getLogicSig(tradeLsigProg, [])
+          tradeLsig.sign(investor.account.sk);
+
+          runtime.setRoundAndTimestamp(4, END_BUY_DATE + 1);
+          fundAsset(runtime, master.account, traderAddr, stablecoinId, TRADE_PRICE * NUM_BONDS_TRADING);
+
+          // Atomic Transaction
+          const tradeTxGroup = tradeTxnsUsingLsig(
+            NUM_BONDS_TRADING,
+            TRADE_PRICE,
+            tradeLsig,
+            bondEscrowLsig,
+            bondId,
+            stablecoinId,
+            mainAppId,
+            trader.account,
+            investorAddr
+          )
+          tradeTxGroup[1].payFlags.totalFee += 1;
+          assert.throws(
+            () => runtime.executeTx(tradeTxGroup),
+            'RUNTIME_ERR1007: Teal code rejected by logic'
+          );
+        });
+
+        it('can trade bond', () => {
+          const tradeLsigProg = getProgram('tradeLsig.py', {
+            MAIN_APP_ID: mainAppId,
+            MANAGE_APP_ID: manageAppId,
+            LV: 1500,
+            TRADE_PRICE
+          });
+          const tradeLsig = runtime.getLogicSig(tradeLsigProg, []);
+          tradeLsig.sign(investor.account.sk);
+
+          runtime.setRoundAndTimestamp(4, END_BUY_DATE + 1);
+          fundAsset(runtime, master.account, traderAddr, stablecoinId, TRADE_PRICE * NUM_BONDS_TRADING);
+          const initialInvestorBondsHolding = runtime.getAssetHolding(bondId, investorAddr);
+          const initialInvestorStablecoinHolding = runtime.getAssetHolding(stablecoinId, investorAddr);
+          const initialTraderStablecoinHolding = runtime.getAssetHolding(stablecoinId, traderAddr);
+
+          // Atomic Transaction
+          const tradeTxGroup = tradeTxnsUsingLsig(
+            NUM_BONDS_TRADING,
+            TRADE_PRICE,
+            tradeLsig,
+            bondEscrowLsig,
+            bondId,
+            stablecoinId,
+            mainAppId,
+            trader.account,
+            investorAddr
+          )
+          runtime.executeTx(tradeTxGroup);
+
+          // verify traded
+          const afterInvestorBondsHolding = runtime.getAssetHolding(bondId, investorAddr);
+          const afterInvestorStablecoinHolding = runtime.getAssetHolding(stablecoinId, investorAddr);
+          const afterTraderStablecoinHolding = runtime.getAssetHolding(stablecoinId, traderAddr);
+          const traderBondHolding = runtime.getAssetHolding(bondId, traderAddr);
+          const localTrade = getMainLocal(investorAddr, 'trade');
+
+          assert.equal(afterInvestorBondsHolding.amount,
+            initialInvestorBondsHolding.amount - BigInt(NUM_BONDS_TRADING));
+          assert.equal(afterInvestorStablecoinHolding.amount,
+            initialInvestorStablecoinHolding.amount + BigInt(NUM_BONDS_TRADING * TRADE_PRICE));
+          assert.equal(afterTraderStablecoinHolding.amount,
+            initialTraderStablecoinHolding.amount - BigInt(NUM_BONDS_TRADING * TRADE_PRICE));
+          assert.equal(traderBondHolding.amount, NUM_BONDS_TRADING);
+          assert.equal(localTrade, WILLING_TO_TRADE - NUM_BONDS_TRADING);
+        });
+      });
+
     });
   });
 
