@@ -25,7 +25,6 @@ const {
 describe('Trade Tests', function () {
   let runtime;
   let master, issuer, investor, trader, greenVerifier;
-  let investorAddr;
   let bondEscrow, bondEscrowLsig, stablecoinEscrow, stablecoinEscrowLsig;
   let mainAppId, manageAppId, bondId, stablecoinId;
 
@@ -67,8 +66,12 @@ describe('Trade Tests', function () {
     // refresh accounts + initialize runtime
     master = new AccountStore(1000e6, { addr: masterAddr, sk: new Uint8Array(0) });
     issuer = new AccountStore(MIN_BALANCE, { addr: issuerAddr, sk: new Uint8Array(0) });
-    investor = new AccountStore(MIN_BALANCE);
-    investorAddr = investor.address;
+    // TODO: Use python sdk and import account using mnemonic
+    investor = new AccountStore(MIN_BALANCE, { addr: investorAddr, sk: new Uint8Array(
+      [55,99,85,4,192,247,129,39,58,174,90,54,27,69,174,254,27,91,1,151,107,66,183,
+        200,141,138, 63,48,210,132,128,238,40,163,38,61,81,199,82,249,113,16,211,62,254,38,
+        49,66,100,120,221,125,150,218,89,152,248,127,77,1,234,228,139,113])
+    });
     trader = new AccountStore(MIN_BALANCE, { addr: traderAddr, sk: new Uint8Array(0) });
     greenVerifier = new AccountStore(MIN_BALANCE, { addr: greenVerifierAddr, sk: new Uint8Array(0) });
     runtime = new Runtime([master, issuer, investor, trader, greenVerifier]);
