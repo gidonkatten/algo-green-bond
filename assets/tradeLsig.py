@@ -47,4 +47,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         params = parseArgs(sys.argv[1], params)
 
-    print(compileTeal(contract(params), Mode.Signature))
+    print(compileTeal(contract(params), Mode.Signature, version=2))

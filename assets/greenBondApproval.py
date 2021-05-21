@@ -80,14 +80,15 @@ def contract(args):
     array_slot = (coupons_payed + Int(1)) / Int(8)
     index_slot = (coupons_payed + Int(1)) % Int(8)
     array = App.globalGetEx(Int(0), Itob(array_slot))  # May need to initialise
-    star_rating = GetByte(  # TODO: How to treat star rating of 0?
+    star_rating = GetByte(
          If(array.hasValue(), array.value(), Bytes("base16", "0x0000000000000000")),
          index_slot
     )
+    penalty = Int(5) - star_rating  # TODO: How to treat star rating of 0?
 
     # verify transfer of USDC is correct amount
     coupon_stablecoin_transfer = Gtxn[3].asset_amount() == Mul(
-        # Int(args["BOND_COUPON"]) * star_rating * Int(11) / Int(10),  # Increase by 10% for every dropped star
+        # Int(args["BOND_COUPON"]) * penalty * Int(11) / Int(10),  # Increase by 10% for every dropped star
         Int(args["BOND_COUPON"]),  # TODO: Delete for TEAL3
         sender_bond_balance.value()
     )
