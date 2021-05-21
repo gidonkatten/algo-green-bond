@@ -84,14 +84,26 @@ def contract(args):
          If(array.hasValue(), array.value(), Bytes("base16", "0x0000000000000000")),
          index_slot
     )
-    penalty = Int(5) - star_rating  # TODO: How to treat star rating of 0?
+    star_rating_stored = ScratchVar(TealType.uint64)
+    # Increase by 10% for every dropped star
+    multiplier = Cond(
+        [star_rating_stored.load() == Int(5), Int(10000)],
+        [star_rating_stored.load() == Int(4), Int(11000)],
+        [star_rating_stored.load() == Int(3), Int(12100)],
+        [star_rating_stored.load() == Int(2), Int(13310)],
+        [star_rating_stored.load() == Int(1), Int(14641)],
+        [star_rating_stored.load() == Int(0), Int(10000)]  # TODO: How to treat star rating of 0?
+    )
 
     # verify transfer of USDC is correct amount
-    coupon_stablecoin_transfer = Gtxn[3].asset_amount() == Mul(
-        # Int(args["BOND_COUPON"]) * penalty * Int(11) / Int(10),  # Increase by 10% for every dropped star
-        Int(args["BOND_COUPON"]),  # TODO: Delete for TEAL3
+    coupon_stablecoin_transfer = Gtxn[3].asset_amount() == Mul(  # TODO: Delete for TEAL3
+        Int(args["BOND_COUPON"]),
         sender_bond_balance.value()
     )
+    # coupon_stablecoin_transfer = Gtxn[3].asset_amount() == Div(
+    #     Int(args["BOND_COUPON"]) * sender_bond_balance.value() * multiplier,
+    #     Int(10000)
+    # )
     # verify have not already claimed coupon:
     coupon_round = If(
         Global.latest_timestamp() > Int(args["MATURITY_DATE"]),
@@ -113,6 +125,7 @@ def contract(args):
     on_coupon = Seq([
         sender_bond_balance,
         array,
+        # star_rating_stored.store(star_rating),  # TODO: TEAL 3
         Assert(coupon_verify),
         App.localPut(
             Int(0),
