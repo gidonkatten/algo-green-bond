@@ -12,7 +12,7 @@ def contract(args):
     bond_escrow_balance = AssetHolding.balance(Int(2), Int(args["BOND_ID"]))
     sender_bond_balance = AssetHolding.balance(Int(0), Int(args["BOND_ID"]))
     bond_total = AssetParam.total(Int(0))
-    coupons_payed_total = App.globalGetEx(Int(1), Bytes("TotCouponsPayed"))
+    reserve = App.globalGetEx(Int(1), Bytes("Reserve"))
 
     # Current coupon round, 0 if none and BOND_LENGTH if finished - stored
     coupon_round = If(
@@ -27,38 +27,25 @@ def contract(args):
             )
         )
     )
-    coupon_round_stored = ScratchVar(TealType.uint64)
 
     # Implementation
-    global_num_bonds_in_circ = Minus(
-        bond_total.value(),
-        bond_escrow_balance.value()
-    )
-    global_coupon_value_owed_now = Mul(
-        Int(args["BOND_COUPON"]),
-        Minus(  # Total number of coupons unpaid until now
-            coupon_round_stored.load() * global_num_bonds_in_circ,
-            coupons_payed_total.value()
-        )
-    )
-    global_principal_value_owed_now = If(
+    num_bonds_in_circ = bond_total.value() - bond_escrow_balance.value()
+    principal_owed = If(
         Global.latest_timestamp() >= Int(args["MATURITY_DATE"]),
-        Int(args["BOND_PRINCIPAL"]) * global_num_bonds_in_circ,
+        Int(args["BOND_PRINCIPAL"]) * num_bonds_in_circ,
         Int(0)  # 0 if not yet maturity
     )
-
     # Value owed across all bonds
-    global_value_owed_now = global_coupon_value_owed_now + global_principal_value_owed_now
-
+    global_value_owed_now = reserve.value() + principal_owed
     # Can afford to pay out all money owed - stored
     has_defaulted = global_value_owed_now > stablecoin_escrow_balance.value()
     has_defaulted_stored = ScratchVar(TealType.uint64)
 
     # CLAIM DEFAULT: Verify stablecoin payout
-    # TODO: More sophisticated payout eg if someone didn't prev claim their coupon?
+    # split remaining funds excluding 'reserve' which is unclaimed coupons amount
     stablecoin_transfer = Eq(
-        global_num_bonds_in_circ / sender_bond_balance.value(),
-        stablecoin_escrow_balance.value() / Gtxn[3].asset_amount()
+        num_bonds_in_circ * Gtxn[3].asset_amount(),
+        (stablecoin_escrow_balance.value() - reserve.value()) * sender_bond_balance.value()
     )
 
     # RATE
@@ -75,7 +62,7 @@ def contract(args):
         And(
             Global.latest_timestamp() >= Int(args["END_BUY_DATE"]),
             Global.latest_timestamp() < Int(args["MATURITY_DATE"]),
-            round_passed_stored.load() == (coupon_round_stored.load() + Int(1))
+            round_passed_stored.load() == (coupon_round + Int(1))
         )
     )
     # Verify rating passed: 1-5 stars
@@ -112,7 +99,6 @@ def contract(args):
 
     # HANDLE NO OP
     handle_no_op = Seq([
-        coupon_round_stored.store(coupon_round),
         # If(Txn.application_args[0] == Bytes("rate"), on_rate),  # TODO: TEAL 3
         Assert(
             And(
@@ -126,7 +112,7 @@ def contract(args):
         bond_escrow_balance,
         sender_bond_balance,
         bond_total,
-        coupons_payed_total,
+        reserve,
         has_defaulted_stored.store(has_defaulted),
         Cond(
             [Txn.application_args[0] == Bytes("defaulted"), has_defaulted_stored.load()],

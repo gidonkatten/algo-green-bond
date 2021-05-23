@@ -30,7 +30,14 @@ def contract(args):
         Global.latest_timestamp() <= Int(args["END_BUY_DATE"])
     )
     #
-    on_buy = And(linked_with_bond_escrow, in_buy_period)
+    on_buy = Seq([
+        Assert(And(linked_with_bond_escrow, in_buy_period)),
+        App.globalPut(
+            Bytes("BondsSold"),
+            App.globalGet(Bytes("BondsSold")) + Gtxn[2].asset_amount()
+        ),
+        Int(1)
+    ])
 
     # SET TRADE: arg is number of bonds willing to trade
     on_set_trade = Seq([
@@ -79,32 +86,29 @@ def contract(args):
     coupons_payed = App.localGet(Int(0), Bytes("CouponsPayed"))
     array_slot = (coupons_payed + Int(1)) / Int(8)
     index_slot = (coupons_payed + Int(1)) % Int(8)
-    array = App.globalGetEx(Int(0), Itob(array_slot))  # May need to initialise
+    array = App.globalGetEx(Int(1), Itob(array_slot))  # May need to initialise
     star_rating = GetByte(
          If(array.hasValue(), array.value(), Bytes("base16", "0x0000000000000000")),
          index_slot
     )
     star_rating_stored = ScratchVar(TealType.uint64)
-    # Increase by 10% for every dropped star
-    multiplier = Cond(
-        [star_rating_stored.load() == Int(5), Int(10000)],
-        [star_rating_stored.load() == Int(4), Int(11000)],
-        [star_rating_stored.load() == Int(3), Int(12100)],
-        [star_rating_stored.load() == Int(2), Int(13310)],
-        [star_rating_stored.load() == Int(1), Int(14641)],
-        [star_rating_stored.load() == Int(0), Int(10000)]  # TODO: How to treat star rating of 0?
-    )
+    multiplier = Int(10000)  # TODO: Delete for TEAL3
+    # multiplier = Cond(
+    #     [star_rating_stored.load() == Int(5), Int(10000)],
+    #     [star_rating_stored.load() == Int(4), Int(11000)],
+    #     [star_rating_stored.load() == Int(3), Int(12100)],
+    #     [star_rating_stored.load() == Int(2), Int(13310)],
+    #     [star_rating_stored.load() == Int(1), Int(14641)],
+    #     [star_rating_stored.load() == Int(0), Int(10000)]  # TODO: How to treat star rating of 0?
+    # )
 
     # verify transfer of USDC is correct amount
-    coupon_stablecoin_transfer = Gtxn[3].asset_amount() == Mul(  # TODO: Delete for TEAL3
-        Int(args["BOND_COUPON"]),
-        sender_bond_balance.value()
-    )
-    # coupon_stablecoin_transfer = Gtxn[3].asset_amount() == Div(
-    #     Int(args["BOND_COUPON"]) * sender_bond_balance.value() * multiplier,
-    #     Int(10000)
-    # )
-    # verify have not already claimed coupon:
+    coupon_val = Div(Int(args["BOND_COUPON"]) * multiplier, Int(10000))
+    coupon_val_stored = ScratchVar(TealType.uint64)
+    coupon_stablecoin_transfer = coupon_val_stored.load() * sender_bond_balance.value()
+    coupon_stablecoin_transfer_stored = ScratchVar(TealType.uint64)
+    has_payed_coupons = Gtxn[3].asset_amount() == coupon_stablecoin_transfer_stored.load()
+    # verify have not already claimed coupon - fail with neg unit if before end buy date:
     coupon_round = If(
         Global.latest_timestamp() > Int(args["MATURITY_DATE"]),
         Int(args["BOND_LENGTH"]),  # coupon round is max BOND_LENGTH
@@ -117,25 +121,47 @@ def contract(args):
     # Combine
     coupon_verify = And(
         # Txn.applications[1] == Int(args["MANAGE_APP_ID"]),  # TODO: TEAL 3
-        coupon_stablecoin_transfer,
+        has_payed_coupons,
         owed_coupon,
         linked_with_stablecoin_escrow
     )
-    # Update how many bond coupon payments locally and globally
+    # Update local coupons payed
+    update_local_cp = App.localPut(
+        Int(0),
+        Bytes("CouponsPayed"),
+        App.localGet(Int(0), Bytes("CouponsPayed")) + Int(1)
+    )
+    # If claiming coupon for first time then update global coupons payed and reserve
+    new_coupon_update = If(
+        App.localGet(Int(0), Bytes("CouponsPayed")) > App.globalGet(Bytes("CouponsPayed")),
+        Seq([
+            App.globalPut(
+                Bytes("CouponsPayed"),
+                App.globalGet(Bytes("CouponsPayed")) + Int(1)
+            ),
+            App.globalPut(
+                Bytes("Reserve"),
+                App.globalGet(Bytes("Reserve")) + App.globalGet(Bytes("BondsSold")) * coupon_val_stored.load()
+            )
+        ])
+
+    )
+    # subtract money claimed from reserve amount
+    sub_reserve = App.globalPut(
+        Bytes("Reserve"),
+        App.globalGet(Bytes("Reserve")) - coupon_stablecoin_transfer_stored.load()
+    )
+    #
     on_coupon = Seq([
-        sender_bond_balance,
         array,
         # star_rating_stored.store(star_rating),  # TODO: TEAL 3
+        sender_bond_balance,
+        coupon_val_stored.store(coupon_val),
+        coupon_stablecoin_transfer_stored.store(coupon_stablecoin_transfer),
         Assert(coupon_verify),
-        App.localPut(
-            Int(0),
-            Bytes("CouponsPayed"),
-            App.localGet(Int(0), Bytes("CouponsPayed")) + Int(1)
-        ),
-        App.globalPut(
-            Bytes("TotCouponsPayed"),
-            App.globalGet(Bytes("TotCouponsPayed")) + sender_bond_balance.value()
-        ),
+        update_local_cp,
+        new_coupon_update,
+        sub_reserve,
         Int(1)
     ])
 
@@ -164,24 +190,19 @@ def contract(args):
     ])
 
     # CLAIM DEFAULT: Stateless contract accounts verifies everything else
-    # verify transfer of USDC is correct amount
+    # verify have collected all coupons available
+    collected_available_coupons = App.localGet(Int(0), Bytes("CouponsPayed")) == App.globalGet(Bytes("CouponsPayed"))
+    # combine
     default_verify = And(
+        collected_available_coupons,
         is_all_bonds,
         linked_with_bond_escrow,
         linked_with_stablecoin_escrow
-    )
-    coupons_missed = Mul(
-        sender_bond_balance.value(),
-        Int(args["BOND_LENGTH"]) - App.localGet(Int(0), Bytes("CouponsPayed"))
     )
     on_default = Seq([
         sender_bond_balance,
         Assert(default_verify),
         App.localDel(Int(0), Bytes("CouponsPayed")),
-        App.globalPut(
-            Bytes("TotCouponsPayed"),
-            App.globalGet(Bytes("TotCouponsPayed")) + coupons_missed  # as if payed coupons off
-        ),
         Int(1)
     ])
 
