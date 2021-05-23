@@ -30,14 +30,7 @@ def contract(args):
         Global.latest_timestamp() <= Int(args["END_BUY_DATE"])
     )
     #
-    on_buy = Seq([
-        Assert(And(linked_with_bond_escrow, in_buy_period)),
-        App.globalPut(
-            Bytes("BondsSold"),
-            App.globalGet(Bytes("BondsSold")) + Gtxn[2].asset_amount()
-        ),
-        Int(1)
-    ])
+    on_buy = linked_with_bond_escrow & in_buy_period
 
     # SET TRADE: arg is number of bonds willing to trade
     on_set_trade = Seq([
@@ -120,7 +113,9 @@ def contract(args):
     owed_coupon = coupons_payed < coupon_round
     # Combine
     coupon_verify = And(
+        Txn.accounts[1] == Addr(args["BOND_ESCROW_ADDR"]),
         # Txn.applications[1] == Int(args["MANAGE_APP_ID"]),  # TODO: TEAL 3
+        # Txn.assets[0] == Int(args["BOND_ID"]),  # TODO: TEAL 3
         has_payed_coupons,
         owed_coupon,
         linked_with_stablecoin_escrow
@@ -132,6 +127,9 @@ def contract(args):
         App.localGet(Int(0), Bytes("CouponsPayed")) + Int(1)
     )
     # If claiming coupon for first time then update global coupons payed and reserve
+    bond_escrow_balance = AssetHolding.balance(Int(1), Int(args["BOND_ID"]))
+    bond_total = AssetParam.total(Int(0))
+    num_bonds_in_circ = bond_total.value() - bond_escrow_balance.value()
     new_coupon_update = If(
         App.localGet(Int(0), Bytes("CouponsPayed")) > App.globalGet(Bytes("CouponsPayed")),
         Seq([
@@ -141,7 +139,7 @@ def contract(args):
             ),
             App.globalPut(
                 Bytes("Reserve"),
-                App.globalGet(Bytes("Reserve")) + App.globalGet(Bytes("BondsSold")) * coupon_val_stored.load()
+                App.globalGet(Bytes("Reserve")) + num_bonds_in_circ * coupon_val_stored.load()
             )
         ])
 
@@ -158,6 +156,8 @@ def contract(args):
         sender_bond_balance,
         coupon_val_stored.store(coupon_val),
         coupon_stablecoin_transfer_stored.store(coupon_stablecoin_transfer),
+        bond_escrow_balance,
+        bond_total,
         Assert(coupon_verify),
         update_local_cp,
         new_coupon_update,

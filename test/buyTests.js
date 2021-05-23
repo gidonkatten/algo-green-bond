@@ -144,12 +144,10 @@ describe('Buy Tests', function () {
       // verify bought
       const afterStablecoinHolding = runtime.getAssetHolding(stablecoinId, investorAddr);
       const bondsHolding = runtime.getAssetHolding(bondId, investorAddr);
-      const bondsSold = getMainGlobal("BondsSold");
 
       assert.equal(afterStablecoinHolding.amount,
         initialStablecoinHolding.amount - BigInt(BOND_COST * NUM_BONDS_BUYING));
       assert.equal(bondsHolding.amount, NUM_BONDS_BUYING);
-      assert.equal(bondsSold, NUM_BONDS_BUYING);
     });
   });
 

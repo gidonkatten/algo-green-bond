@@ -25,14 +25,14 @@ const clearProgram = getProgram('greenBondClear.py');
 const mainStateStorage = {
   localInts: 1, // CouponsPayed
   localBytes: 0,
-  globalInts: 3, // BondsSold, CouponsPayed, Reserve
+  globalInts: 2, // CouponsPayed, Reserve
   globalBytes: 1, // Creator TODO: TEAL3 0
 };
 const manageStateStorage = {
   localInts: 0,
   localBytes: 0,
   globalInts: 0,
-  globalBytes: 1,  // <rating-array> Math.ceil(BondLength / 8)
+  globalBytes: 1,  // <rating-array> Math.ceil((bondLength + 1) / 8)
 };
 
 /**
@@ -302,7 +302,9 @@ function claimCouponTxns(
       appId: mainAppId,
       payFlags: { totalFee: 1000 },
       appArgs: [stringToBytes('coupon')],
-      foreignApps: [manageAppId]
+      accounts: [bondEscrowAddr],
+      foreignApps: [manageAppId],
+      foreignAssets: [bondId]
     },
     {
       type: types.TransactionType.CallNoOpSSC,

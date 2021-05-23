@@ -102,10 +102,10 @@ def contract(args):
         # If(Txn.application_args[0] == Bytes("rate"), on_rate),  # TODO: TEAL 3
         Assert(
             And(
-                # Txn.applications[1] == Int(args["MAIN_APP_ID"]),  # TODO: TEAL 3
-                # Txn.assets[0] == Int(args["BOND_ID"]),  # TODO: TEAL 3
                 Txn.accounts[1] == Addr(args["STABLECOIN_ESCROW_ADDR"]),
-                Txn.accounts[2] == Addr(args["BOND_ESCROW_ADDR"])
+                Txn.accounts[2] == Addr(args["BOND_ESCROW_ADDR"]),
+                # Txn.applications[1] == Int(args["MAIN_APP_ID"]),  # TODO: TEAL 3
+                # Txn.assets[0] == Int(args["BOND_ID"])  # TODO: TEAL 3
             )
         ),
         stablecoin_escrow_balance,
