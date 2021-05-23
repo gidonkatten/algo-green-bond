@@ -324,14 +324,14 @@ describe('Coupon Tests', function () {
         )
         runtime.executeTx(claimCouponTxGroup);
 
-        const localCouponsPayed = getMainLocal(investorAddr, 'CouponsPayed');
-        const globalCouponsPayed = getMainGlobal('CouponsPayed');
+        const localCouponsPaid = getMainLocal(investorAddr, 'CouponsPaid');
+        const globalCouponsPaid = getMainGlobal('CouponsPaid');
         const reserve = getMainGlobal('Reserve');
         const afterInvestorStablecoinHolding = runtime.getAssetHolding(stablecoinId, investorAddr);
         const afterEscrowStablecoinHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrowAddress);
 
-        assert.equal(localCouponsPayed, 1);
-        assert.equal(globalCouponsPayed, 1);
+        assert.equal(localCouponsPaid, 1);
+        assert.equal(globalCouponsPaid, 1);
         assert.equal(reserve, 0);
         assert.equal(afterInvestorStablecoinHolding.amount,
           initialInvestorStablecoinHolding.amount + BigInt(NUM_BONDS_OWNED * BOND_COUPON));

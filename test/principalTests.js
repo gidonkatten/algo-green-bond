@@ -173,13 +173,13 @@ describe('Principal Tests', function () {
 
       runtime.executeTx(claimPrincipalTxGroup);
 
-      const localCouponsPayed = getMainLocal(investorAddr, 'CouponsPayed');
+      const localCouponsPaid = getMainLocal(investorAddr, 'CouponsPaid');
       const investorBondHolding = runtime.getAssetHolding(bondId, investorAddr);
       const afterEscrowBondHolding = runtime.getAssetHolding(bondId, bondEscrowAddress);
       const afterInvestorStablecoinHolding = runtime.getAssetHolding(stablecoinId, investorAddr);
       const afterEscrowStablecoinHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrowAddress);
 
-      assert.isUndefined(localCouponsPayed);
+      assert.isUndefined(localCouponsPaid);
       assert.equal(investorBondHolding.amount, 0);
       assert.equal(afterEscrowBondHolding.amount,
         initialEscrowBondHolding.amount + BigInt(NUM_BONDS_BUYING));

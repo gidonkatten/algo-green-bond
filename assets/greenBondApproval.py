@@ -42,20 +42,20 @@ def contract(args):
     in_trade_window = Global.latest_timestamp() > Int(args["END_BUY_DATE"])
     # if receiver of bond already is an owner
     # then: verify receiver has same number of coupon payments as sender
-    # else: set receiver's CouponsPayed to the sender's CouponsPayed
+    # else: set receiver's CouponsPaid to the sender's CouponsPaid
     receiver_bond_balance = AssetHolding.balance(Int(1), Int(args["BOND_ID"]))
     has_same_num_installments = Seq([
         receiver_bond_balance,
         If(
             receiver_bond_balance.value() > Int(0),
             Assert(
-                App.localGet(Int(0), Bytes("CouponsPayed")) ==
-                App.localGet(Int(1), Bytes("CouponsPayed"))
+                App.localGet(Int(0), Bytes("CouponsPaid")) ==
+                App.localGet(Int(1), Bytes("CouponsPaid"))
             ),
             App.localPut(
                 Int(1),
-                Bytes("CouponsPayed"),
-                App.localGet(Int(0), Bytes("CouponsPayed"))
+                Bytes("CouponsPaid"),
+                App.localGet(Int(0), Bytes("CouponsPaid"))
             )
         )
     ])
@@ -76,9 +76,9 @@ def contract(args):
 
     # CLAIM COUPON: Stateless contract accounts verifies everything else
     # check star rating
-    coupons_payed = App.localGet(Int(0), Bytes("CouponsPayed"))
-    array_slot = (coupons_payed + Int(1)) / Int(8)
-    index_slot = (coupons_payed + Int(1)) % Int(8)
+    coupons_paid = App.localGet(Int(0), Bytes("CouponsPaid"))
+    array_slot = (coupons_paid + Int(1)) / Int(8)
+    index_slot = (coupons_paid + Int(1)) % Int(8)
     array = App.globalGetEx(Int(1), Itob(array_slot))  # May need to initialise
     star_rating = GetByte(
          If(array.hasValue(), array.value(), Bytes("base16", "0x0000000000000000")),
@@ -100,7 +100,7 @@ def contract(args):
     coupon_val_stored = ScratchVar(TealType.uint64)
     coupon_stablecoin_transfer = coupon_val_stored.load() * sender_bond_balance.value()
     coupon_stablecoin_transfer_stored = ScratchVar(TealType.uint64)
-    has_payed_coupons = Gtxn[3].asset_amount() == coupon_stablecoin_transfer_stored.load()
+    has_paid_coupons = Gtxn[3].asset_amount() == coupon_stablecoin_transfer_stored.load()
     # verify have not already claimed coupon - fail with neg unit if before end buy date:
     coupon_round = If(
         Global.latest_timestamp() > Int(args["MATURITY_DATE"]),
@@ -110,32 +110,32 @@ def contract(args):
             Int(args["PERIOD"])
         )
     )
-    owed_coupon = coupons_payed < coupon_round
+    owed_coupon = coupons_paid < coupon_round
     # Combine
     coupon_verify = And(
         Txn.accounts[1] == Addr(args["BOND_ESCROW_ADDR"]),
         # Txn.applications[1] == Int(args["MANAGE_APP_ID"]),  # TODO: TEAL 3
         # Txn.assets[0] == Int(args["BOND_ID"]),  # TODO: TEAL 3
-        has_payed_coupons,
+        has_paid_coupons,
         owed_coupon,
         linked_with_stablecoin_escrow
     )
-    # Update local coupons payed
+    # Update local coupons paid
     update_local_cp = App.localPut(
         Int(0),
-        Bytes("CouponsPayed"),
-        App.localGet(Int(0), Bytes("CouponsPayed")) + Int(1)
+        Bytes("CouponsPaid"),
+        App.localGet(Int(0), Bytes("CouponsPaid")) + Int(1)
     )
-    # If claiming coupon for first time then update global coupons payed and reserve
+    # If claiming coupon for first time then update global coupons paid and reserve
     bond_escrow_balance = AssetHolding.balance(Int(1), Int(args["BOND_ID"]))
     bond_total = AssetParam.total(Int(0))
     num_bonds_in_circ = bond_total.value() - bond_escrow_balance.value()
     new_coupon_update = If(
-        App.localGet(Int(0), Bytes("CouponsPayed")) > App.globalGet(Bytes("CouponsPayed")),
+        App.localGet(Int(0), Bytes("CouponsPaid")) > App.globalGet(Bytes("CouponsPaid")),
         Seq([
             App.globalPut(
-                Bytes("CouponsPayed"),
-                App.globalGet(Bytes("CouponsPayed")) + Int(1)
+                Bytes("CouponsPaid"),
+                App.globalGet(Bytes("CouponsPaid")) + Int(1)
             ),
             App.globalPut(
                 Bytes("Reserve"),
@@ -170,7 +170,7 @@ def contract(args):
     is_all_bonds = Gtxn[2].asset_amount() == sender_bond_balance.value()
     # verify have collected all coupon payments or no coupons exists
     collected_all_coupons = Or(
-        Int(args["BOND_LENGTH"]) == App.localGet(Int(0), Bytes("CouponsPayed")),
+        Int(args["BOND_LENGTH"]) == App.localGet(Int(0), Bytes("CouponsPaid")),
         Int(args["BOND_COUPON"]) == Int(0)
     )
     # Combine
@@ -185,13 +185,13 @@ def contract(args):
     on_principal = Seq([
         sender_bond_balance,
         Assert(principal_verify),
-        App.localDel(Int(0), Bytes("CouponsPayed")),
+        App.localDel(Int(0), Bytes("CouponsPaid")),
         Int(1)
     ])
 
     # CLAIM DEFAULT: Stateless contract accounts verifies everything else
     # verify have collected all coupons available
-    collected_available_coupons = App.localGet(Int(0), Bytes("CouponsPayed")) == App.globalGet(Bytes("CouponsPayed"))
+    collected_available_coupons = App.localGet(Int(0), Bytes("CouponsPaid")) == App.globalGet(Bytes("CouponsPaid"))
     # combine
     default_verify = And(
         collected_available_coupons,
@@ -202,7 +202,7 @@ def contract(args):
     on_default = Seq([
         sender_bond_balance,
         Assert(default_verify),
-        App.localDel(Int(0), Bytes("CouponsPayed")),
+        App.localDel(Int(0), Bytes("CouponsPaid")),
         Int(1)
     ])
 
