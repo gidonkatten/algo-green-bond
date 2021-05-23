@@ -27,6 +27,7 @@ def contract(args):
             )
         )
     )
+    coupon_round_stored = ScratchVar(TealType.uint64)
 
     # Implementation
     num_bonds_in_circ = bond_total.value() - bond_escrow_balance.value()
@@ -35,8 +36,41 @@ def contract(args):
         Int(args["BOND_PRINCIPAL"]) * num_bonds_in_circ,
         Int(0)  # 0 if not yet maturity
     )
+    # If claiming default then need to add additional coupon (if any) to owed amount
+    coupon_rounds_claimed = App.globalGetEx(Int(1), Bytes("CouponsPayed"))
+    coupon_array_slot = coupon_rounds_claimed.value() / Int(8)
+    coupon_index_slot = coupon_rounds_claimed.value() % Int(8)
+    coupon_array = App.globalGetEx(Int(0), Itob(coupon_array_slot))  # Initialise if needed
+    coupon_star_rating = GetByte(
+        If(coupon_array.hasValue(), coupon_array.value(), Bytes("base16", "0x0000000000000000")),
+        coupon_index_slot
+    )
+    coupon_star_rating_stored = ScratchVar(TealType.uint64)
+    multiplier = Int(10000)  # TODO: Delete for TEAL3
+    # multiplier = Cond(
+    #     [coupon_star_rating_stored.load() == Int(5), Int(10000)],
+    #     [coupon_star_rating_stored.load() == Int(4), Int(11000)],
+    #     [coupon_star_rating_stored.load() == Int(3), Int(12100)],
+    #     [coupon_star_rating_stored.load() == Int(2), Int(13310)],
+    #     [coupon_star_rating_stored.load() == Int(1), Int(14641)],
+    #     [coupon_star_rating_stored.load() == Int(0), Int(10000)]  # TODO: How to treat star rating of 0?
+    # )
+    coupon_owed = Seq([
+        coupon_rounds_claimed,
+        coupon_array,
+        # coupon_star_rating_stored.store(coupon_star_rating),  # TODO: TEAL 3
+        If(
+            And(
+                Txn.application_args[0] == Bytes("claim_default"),
+                coupon_round_stored.load() > coupon_rounds_claimed.value()  # there are unclaimed coupons
+            ),
+            Int(args["BOND_COUPON"]) * multiplier * num_bonds_in_circ,  # used to determine if defaulted at this coupon
+            Int(0)  # no additional money owed
+        )
+    ])
+
     # Value owed across all bonds
-    global_value_owed_now = reserve.value() + principal_owed
+    global_value_owed_now = reserve.value() + principal_owed + coupon_owed
     # Can afford to pay out all money owed - stored
     has_defaulted = global_value_owed_now > stablecoin_escrow_balance.value()
     has_defaulted_stored = ScratchVar(TealType.uint64)
@@ -99,6 +133,7 @@ def contract(args):
 
     # HANDLE NO OP
     handle_no_op = Seq([
+        coupon_round_stored.store(coupon_round),
         # If(Txn.application_args[0] == Bytes("rate"), on_rate),  # TODO: TEAL 3
         Assert(
             And(
