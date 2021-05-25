@@ -34,7 +34,7 @@ def contract(args):
 
     # SET TRADE: arg is number of bonds willing to trade
     on_set_trade = Seq([
-        App.localPut(Int(0), Bytes("trade"), Btoi(Txn.application_args[1])),
+        App.localPut(Int(0), Bytes("Trade"), Btoi(Txn.application_args[1])),
         Int(1)
     ])
 
@@ -63,8 +63,8 @@ def contract(args):
     # will fail with negative unit if trading too many bonds
     update_trade = App.localPut(
         Int(0),
-        Bytes("trade"),
-        App.localGet(Int(0), Bytes("trade")) - Gtxn[2].asset_amount()
+        Bytes("Trade"),
+        App.localGet(Int(0), Bytes("Trade")) - Gtxn[2].asset_amount()
     )
     #
     on_trade = Seq([

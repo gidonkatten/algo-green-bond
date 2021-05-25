@@ -23,7 +23,7 @@ const BOND_PRINCIPAL = 100e6;
 const clearProgram = getProgram('greenBondClear.py');
 
 const mainStateStorage = {
-  localInts: 1, // CouponsPaid
+  localInts: 2, // CouponsPaid, Trade
   localBytes: 0,
   globalInts: 2, // CouponsPaid, Reserve
   globalBytes: 1, // Creator TODO: TEAL3 0

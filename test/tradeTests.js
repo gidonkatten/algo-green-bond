@@ -195,7 +195,7 @@ describe('Trade Tests', function () {
       });
 
       it('can set amount willing to trade', () => {
-        const localTrade = getMainLocal(investorAddr, 'trade');
+        const localTrade = getMainLocal(investorAddr, 'Trade');
         assert.equal(localTrade, WILLING_TO_TRADE);
       });
 
@@ -247,7 +247,7 @@ describe('Trade Tests', function () {
         // verify traded
         const afterInvestorBondsHolding = runtime.getAssetHolding(bondId, investorAddr);
         const traderBondHolding = runtime.getAssetHolding(bondId, traderAddr);
-        const localTrade = getMainLocal(investorAddr, 'trade');
+        const localTrade = getMainLocal(investorAddr, 'Trade');
 
         assert.equal(afterInvestorBondsHolding.amount,
           initialInvestorBondsHolding.amount - BigInt(NUM_BONDS_TRADING));
@@ -452,7 +452,7 @@ describe('Trade Tests', function () {
           const afterInvestorStablecoinHolding = runtime.getAssetHolding(stablecoinId, investorAddr);
           const afterTraderStablecoinHolding = runtime.getAssetHolding(stablecoinId, traderAddr);
           const traderBondHolding = runtime.getAssetHolding(bondId, traderAddr);
-          const localTrade = getMainLocal(investorAddr, 'trade');
+          const localTrade = getMainLocal(investorAddr, 'Trade');
 
           assert.equal(afterInvestorBondsHolding.amount,
             initialInvestorBondsHolding.amount - BigInt(NUM_BONDS_TRADING));
