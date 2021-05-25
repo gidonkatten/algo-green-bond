@@ -83,22 +83,20 @@ def contract(args):
     )
 
     # RATE
-    round_passed = Btoi(Txn.application_args[1])
-    round_passed_stored = ScratchVar(TealType.uint64)
-    rating_passed = Btoi(Txn.application_args[2])
+    rating_passed = Btoi(Txn.application_args[1])
     rating_passed_stored = ScratchVar(TealType.uint64)
-    # Verify round passed: 0 is 'Use of Proceeds', 1-BOND_LENGTH for coupon reporting
-    verify_round_passed = Or(
-        And(
-            Global.latest_timestamp() < Int(args["START_BUY_DATE"]),
-            round_passed_stored.load() == Int(0)
-        ),
-        And(
-            Global.latest_timestamp() >= Int(args["END_BUY_DATE"]),
-            Global.latest_timestamp() < Int(args["MATURITY_DATE"]),
-            round_passed_stored.load() == (coupon_round + Int(1))
-        )
+    # round: 0 is 'Use of Proceeds', 1-BOND_LENGTH for coupon reporting
+    round_passed = Cond(
+        [Global.latest_timestamp() < Int(args["START_BUY_DATE"]), Int(0)],
+        [
+            And(
+                Global.latest_timestamp() >= Int(args["END_BUY_DATE"]),
+                Global.latest_timestamp() < Int(args["MATURITY_DATE"])
+            ),
+            coupon_round + Int(1)
+        ]
     )
+    round_passed_stored = ScratchVar(TealType.uint64)
     # Verify rating passed: 1-5 stars
     verify_rating_passed = And(
         rating_passed_stored.load() >= Int(1),
@@ -106,7 +104,6 @@ def contract(args):
     )
     # Combine
     rate_verify = And(
-        verify_round_passed,
         verify_rating_passed,
         Txn.sender() == Addr(args["GREEN_VERIFIER_ADDR"])
     )
