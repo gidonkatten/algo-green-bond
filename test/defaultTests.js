@@ -1,8 +1,9 @@
-const { getProgram } = require('@algo-builder/algob');
+const { getProgram, stringToBytes } = require('@algo-builder/algob');
 const { Runtime, AccountStore, types } = require('@algo-builder/runtime');
 const { assert } = require('chai');
 const {
   greenVerifierAddr,
+  financialRegulatorAddr,
   investorAddr,
   issuerAddr,
   masterAddr,
@@ -25,7 +26,7 @@ const {
 
 describe('Default Tests', function () {
   let runtime;
-  let master, issuer, investor, trader, greenVerifier;
+  let master, issuer, investor, trader, greenVerifier, financialRegulator;
   let bondEscrow, bondEscrowLsig, stablecoinEscrow, stablecoinEscrowLsig;
   let mainAppId, manageAppId, bondId, stablecoinId;
 
@@ -59,7 +60,8 @@ describe('Default Tests', function () {
     investor = new AccountStore(MIN_BALANCE, { addr: investorAddr, sk: new Uint8Array(0) });
     trader = new AccountStore(MIN_BALANCE, { addr: traderAddr, sk: new Uint8Array(0) });
     greenVerifier = new AccountStore(MIN_BALANCE, { addr: greenVerifierAddr, sk: new Uint8Array(0) });
-    runtime = new Runtime([master, issuer, investor, trader, greenVerifier]);
+    financialRegulator = new AccountStore(MIN_BALANCE, { addr: financialRegulatorAddr, sk: new Uint8Array(0) });
+    runtime = new Runtime([master, issuer, investor, trader, greenVerifier, financialRegulator]);
 
     // create and get app id for the stateful contracts
     mainAppId = createInitialApp(runtime, master.account, mainStateStorage);
@@ -128,42 +130,70 @@ describe('Default Tests', function () {
 
   describe('default', function () {
 
-    it('should be able to claim default on coupon', () => {
-      // setup
+    const NUM_BONDS_OWNED = 3;
+
+    this.beforeEach(() => {
       updateMainApp(runtime, masterAddr, mainAppId, {
         MANAGE_APP_ID: manageAppId,
         STABLECOIN_ESCROW_ADDR: stablecoinEscrow.address,
         BOND_ESCROW_ADDR: bondEscrow.address,
-        BOND_COUPON: 1000,
-        BOND_PRINCIPAL: 1
+        BOND_COUPON: 0
       });
       updateManageApp(runtime, masterAddr, manageAppId, {
         MAIN_APP_ID: mainAppId,
         STABLECOIN_ESCROW_ADDR: stablecoinEscrow.address,
         BOND_ESCROW_ADDR: bondEscrow.address,
-        BOND_COUPON: 1000,
-        BOND_PRINCIPAL: 1
+        BOND_COUPON: 0
       });
       runtime.optInToApp(investorAddr, mainAppId, {}, {});
+
+      // unfreeze
+      runtime.executeTx({
+        type: types.TransactionType.CallNoOpSSC,
+        sign: types.SignType.SecretKey,
+        fromAccount: financialRegulator.account,
+        appId: mainAppId,
+        payFlags: {},
+        appArgs: [stringToBytes("freeze"), 'int:1'],
+        accounts: [investorAddr],
+      });
+      runtime.executeTx({
+        type: types.TransactionType.CallNoOpSSC,
+        sign: types.SignType.SecretKey,
+        fromAccount: financialRegulator.account,
+        appId: mainAppId,
+        payFlags: {},
+        appArgs: [stringToBytes("freeze_all"), 'int:1'],
+      });
+
+      // buy
       runtime.setRoundAndTimestamp(3, START_BUY_DATE);
-      const NUM_BONDS_BUYING = 3;
-      const defaultAmount = 999;
-      fundAsset(runtime, master.account, investorAddr, stablecoinId, BOND_COST * NUM_BONDS_BUYING);
-      buyBond(NUM_BONDS_BUYING, BOND_COST);
+      fundAsset(runtime, master.account, investorAddr, stablecoinId, BOND_COST * NUM_BONDS_OWNED);
+      buyBond(NUM_BONDS_OWNED, BOND_COST, investor.account);
+    });
+
+    it('cannot claim default when account frozen', () => {
+      // freeze
+      runtime.executeTx({
+        type: types.TransactionType.CallNoOpSSC,
+        sign: types.SignType.SecretKey,
+        fromAccount: financialRegulator.account,
+        appId: mainAppId,
+        payFlags: {},
+        appArgs: [stringToBytes("freeze"), 'int:0'],
+        accounts: [investorAddr],
+      });
+      assert.equal(getMainLocal(investorAddr, 'Frozen'), 0);
 
       // claim default
       runtime.setRoundAndTimestamp(4, MATURITY_DATE);
-      const bondEscrowAddress = bondEscrowLsig.address();
       const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
+      const defaultAmount = 999;
       fundAsset(runtime, master.account, stablecoinEscrowAddress, stablecoinId, defaultAmount);
-
-      const initialEscrowBondHolding = runtime.getAssetHolding(bondId, bondEscrowAddress);
-      const initialInvestorStablecoinHolding = runtime.getAssetHolding(stablecoinId, investorAddr);
-      const initialEscrowStablecoinHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrowAddress);
 
       // Atomic Transaction
       const claimDefaultTxGroup = claimDefaultTxns(
-        NUM_BONDS_BUYING,
+        NUM_BONDS_OWNED,
         defaultAmount,
         stablecoinEscrowLsig,
         bondEscrowLsig,
@@ -172,8 +202,72 @@ describe('Default Tests', function () {
         mainAppId,
         manageAppId,
         investor.account,
-      )
+      );
+      assert.throws(
+        () => runtime.executeTx(claimDefaultTxGroup),
+        'RUNTIME_ERR1009: TEAL runtime encountered err opcode'
+      );
+    });
 
+    it('cannot claim default when all frozen', () => {
+      // freeze
+      runtime.executeTx({
+        type: types.TransactionType.CallNoOpSSC,
+        sign: types.SignType.SecretKey,
+        fromAccount: financialRegulator.account,
+        appId: mainAppId,
+        payFlags: {},
+        appArgs: [stringToBytes("freeze_all"), 'int:0'],
+      });
+      assert.equal(getMainGlobal('Frozen'), 0);
+
+      // claim default
+      runtime.setRoundAndTimestamp(4, MATURITY_DATE);
+      const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
+      const defaultAmount = 999;
+      fundAsset(runtime, master.account, stablecoinEscrowAddress, stablecoinId, defaultAmount);
+
+      // Atomic Transaction
+      const claimDefaultTxGroup = claimDefaultTxns(
+        NUM_BONDS_OWNED,
+        defaultAmount,
+        stablecoinEscrowLsig,
+        bondEscrowLsig,
+        bondId,
+        stablecoinId,
+        mainAppId,
+        manageAppId,
+        investor.account,
+      );
+      assert.throws(
+        () => runtime.executeTx(claimDefaultTxGroup),
+        'RUNTIME_ERR1009: TEAL runtime encountered err opcode'
+      );
+    });
+
+    it('should be able to claim default on coupon', () => {
+      runtime.setRoundAndTimestamp(4, MATURITY_DATE);
+      const bondEscrowAddress = bondEscrowLsig.address();
+      const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
+      const defaultAmount = 999;
+      fundAsset(runtime, master.account, stablecoinEscrowAddress, stablecoinId, defaultAmount);
+
+      const initialEscrowBondHolding = runtime.getAssetHolding(bondId, bondEscrowAddress);
+      const initialInvestorStablecoinHolding = runtime.getAssetHolding(stablecoinId, investorAddr);
+      const initialEscrowStablecoinHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrowAddress);
+
+      // Atomic Transaction
+      const claimDefaultTxGroup = claimDefaultTxns(
+        NUM_BONDS_OWNED,
+        defaultAmount,
+        stablecoinEscrowLsig,
+        bondEscrowLsig,
+        bondId,
+        stablecoinId,
+        mainAppId,
+        manageAppId,
+        investor.account,
+      );
       runtime.executeTx(claimDefaultTxGroup);
 
       const localCouponsPaid = getMainLocal(investorAddr, 'CouponsPaid');
@@ -185,7 +279,7 @@ describe('Default Tests', function () {
       assert.isUndefined(localCouponsPaid);
       assert.equal(investorBondHolding.amount, 0);
       assert.equal(afterEscrowBondHolding.amount,
-        initialEscrowBondHolding.amount + BigInt(NUM_BONDS_BUYING));
+        initialEscrowBondHolding.amount + BigInt(NUM_BONDS_OWNED));
       assert.equal(afterInvestorStablecoinHolding.amount,
         initialInvestorStablecoinHolding.amount + BigInt(defaultAmount));
       assert.equal(afterEscrowStablecoinHolding.amount,
@@ -194,30 +288,10 @@ describe('Default Tests', function () {
 
 
     it('should be able to claim default on principal', () => {
-      // setup
-      updateMainApp(runtime, masterAddr, mainAppId, {
-        MANAGE_APP_ID: manageAppId,
-        STABLECOIN_ESCROW_ADDR: stablecoinEscrow.address,
-        BOND_ESCROW_ADDR: bondEscrow.address,
-        BOND_COUPON: 0
-      });
-      updateManageApp(runtime, masterAddr, manageAppId, {
-        MAIN_APP_ID: mainAppId,
-        STABLECOIN_ESCROW_ADDR: stablecoinEscrow.address,
-        BOND_ESCROW_ADDR: bondEscrow.address,
-        BOND_COUPON: 0
-      });
-      runtime.optInToApp(investorAddr, mainAppId, {}, {});
-      runtime.setRoundAndTimestamp(3, START_BUY_DATE);
-      const NUM_BONDS_BUYING = 3;
-      const defaultAmount = BOND_PRINCIPAL * NUM_BONDS_BUYING / 2;
-      fundAsset(runtime, master.account, investorAddr, stablecoinId, BOND_COST * NUM_BONDS_BUYING);
-      buyBond(NUM_BONDS_BUYING, BOND_COST);
-
-      // claim default
       runtime.setRoundAndTimestamp(4, MATURITY_DATE);
       const bondEscrowAddress = bondEscrowLsig.address();
       const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
+      const defaultAmount = BOND_PRINCIPAL * NUM_BONDS_OWNED / 2;
       fundAsset(runtime, master.account, stablecoinEscrowAddress, stablecoinId, defaultAmount);
 
       const initialEscrowBondHolding = runtime.getAssetHolding(bondId, bondEscrowAddress);
@@ -226,7 +300,7 @@ describe('Default Tests', function () {
 
       // Atomic Transaction
       const claimDefaultTxGroup = claimDefaultTxns(
-        NUM_BONDS_BUYING,
+        NUM_BONDS_OWNED,
         defaultAmount,
         stablecoinEscrowLsig,
         bondEscrowLsig,
@@ -235,8 +309,7 @@ describe('Default Tests', function () {
         mainAppId,
         manageAppId,
         investor.account,
-      )
-
+      );
       runtime.executeTx(claimDefaultTxGroup);
 
       const localCouponsPaid = getMainLocal(investorAddr, 'CouponsPaid');
@@ -248,7 +321,7 @@ describe('Default Tests', function () {
       assert.isUndefined(localCouponsPaid);
       assert.equal(investorBondHolding.amount, 0);
       assert.equal(afterEscrowBondHolding.amount,
-        initialEscrowBondHolding.amount + BigInt(NUM_BONDS_BUYING));
+        initialEscrowBondHolding.amount + BigInt(NUM_BONDS_OWNED));
       assert.equal(afterInvestorStablecoinHolding.amount,
         initialInvestorStablecoinHolding.amount + BigInt(defaultAmount));
       assert.equal(afterEscrowStablecoinHolding.amount,

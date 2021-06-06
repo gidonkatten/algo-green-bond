@@ -7,6 +7,7 @@ const issuerAddr = "EMO2JEPSRWNAJGR62S75GQ4ICOKVNI46AYRERZPJOWYUFEYEZJ6BU5GMXY";
 const investorAddr = "FCRSMPKRY5JPS4IQ2M7P4JRRIJSHRXL5S3NFTGHYP5GQD2XERNYUWEXG54";
 const traderAddr = "TWYS3Y6SJOUW6WIEIXTBOII7523QI4MUO3TSYDS7SCG4TIGGC2S6V6TJP4";
 const greenVerifierAddr = "OF6CYTCWXXZQCIFLUBNFZJ43V5BWZAL7BBMSQRIGUYQJVM63GIJ5SPA3JE";
+const financialRegulatorAddr = "NDVDOPWPQEWUL3VLQYYVD7S2LGO3ZJXQLEXBU2ZOP4AI44ZM2KINQGPFCM";
 
 const MIN_BALANCE = 10e6; // 10 algo
 
@@ -23,9 +24,9 @@ const BOND_PRINCIPAL = 100e6;
 const clearProgram = getProgram('greenBondClear.py');
 
 const mainStateStorage = {
-  localInts: 2, // CouponsPaid, Trade
+  localInts: 3, // CouponsPaid, Trade, Frozen
   localBytes: 0,
-  globalInts: 2, // CouponsPaid, Reserve
+  globalInts: 3, // CouponsPaid, Reserve, Frozen
   globalBytes: 1, // Creator TODO: TEAL3 0
 };
 const manageStateStorage = {
@@ -498,6 +499,7 @@ module.exports = {
   investorAddr,
   traderAddr,
   greenVerifierAddr,
+  financialRegulatorAddr,
   MIN_BALANCE,
   PERIOD,
   BOND_LENGTH,

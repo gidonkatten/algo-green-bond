@@ -23,6 +23,26 @@ def contract(args):
         Int(1)
     ])
 
+    # SET TRADE: arg is number of bonds willing to trade
+    on_set_trade = Seq([
+        App.localPut(Int(0), Bytes("Trade"), Btoi(Txn.application_args[1])),
+        Int(1)
+    ])
+
+    # FREEZE: one address - 0 is frozen and non 0 is not
+    on_freeze = Seq([
+        Assert(Txn.sender() == Addr(args["FINANCIAL_REGULATOR_ADDR"])),
+        App.localPut(Int(1), Bytes("Frozen"), Btoi(Txn.application_args[1])),
+        Int(1)
+    ])
+
+    # FREEZE_ALL: everyone - 0 is frozen and non 0 is not
+    on_freeze_all = Seq([
+        Assert(Txn.sender() == Addr(args["FINANCIAL_REGULATOR_ADDR"])),
+        App.globalPut(Bytes("Frozen"), Btoi(Txn.application_args[1])),
+        Int(1)
+    ])
+
     # BUY: Stateless contract account verifies everything else
     # verify in buy period
     in_buy_period = And(
@@ -32,14 +52,9 @@ def contract(args):
     #
     on_buy = linked_with_bond_escrow & in_buy_period
 
-    # SET TRADE: arg is number of bonds willing to trade
-    on_set_trade = Seq([
-        App.localPut(Int(0), Bytes("Trade"), Btoi(Txn.application_args[1])),
-        Int(1)
-    ])
-
     # TRADE: Stateless contract account verifies everything else
     in_trade_window = Global.latest_timestamp() > Int(args["END_BUY_DATE"])
+    receiver_approved = App.localGet(Int(1), Bytes("Frozen")) > Int(0)
     # if receiver of bond already is an owner
     # then: verify receiver has same number of coupon payments as sender
     # else: set receiver's CouponsPaid to the sender's CouponsPaid
@@ -68,7 +83,7 @@ def contract(args):
     )
     #
     on_trade = Seq([
-        Assert(And(linked_with_bond_escrow, in_trade_window)),
+        Assert(And(linked_with_bond_escrow, in_trade_window, receiver_approved)),
         has_same_num_installments,
         update_trade,
         Int(1)
@@ -214,12 +229,22 @@ def contract(args):
         [Txn.on_completion() == OnComplete.UpdateApplication, Int(0)],
         [Txn.on_completion() == OnComplete.CloseOut, on_closeout],
         [Txn.on_completion() == OnComplete.OptIn, on_opt_in],
-        [Txn.application_args[0] == Bytes("buy"), on_buy],
         [Txn.application_args[0] == Bytes("set_trade"), on_set_trade],
-        [Txn.application_args[0] == Bytes("trade"), on_trade],
-        [Txn.application_args[0] == Bytes("coupon"), on_coupon],
-        [Txn.application_args[0] == Bytes("sell"), on_principal],
-        [Txn.application_args[0] == Bytes("default"), on_default]
+        [Txn.application_args[0] == Bytes("freeze"), on_freeze],
+        [Txn.application_args[0] == Bytes("freeze_all"), on_freeze_all],
+        [Int(1), Seq([
+            Assert(And(
+                App.globalGet(Bytes("Frozen")) > Int(0),
+                App.localGet(Int(0), Bytes("Frozen")) > Int(0),
+            )),
+            Cond(
+                [Txn.application_args[0] == Bytes("buy"), on_buy],
+                [Txn.application_args[0] == Bytes("trade"), on_trade],
+                [Txn.application_args[0] == Bytes("coupon"), on_coupon],
+                [Txn.application_args[0] == Bytes("sell"), on_principal],
+                [Txn.application_args[0] == Bytes("default"), on_default]
+            )
+        ])]
     )
 
     # Ensure call to contract is first (in atomic group)

@@ -3,19 +3,15 @@ const { Runtime, AccountStore, types } = require('@algo-builder/runtime');
 const { assert } = require('chai');
 const {
   greenVerifierAddr,
+  financialRegulatorAddr,
   investorAddr,
   issuerAddr,
   masterAddr,
   traderAddr,
   MIN_BALANCE,
-  PERIOD,
-  BOND_LENGTH,
   START_BUY_DATE,
-  END_BUY_DATE,
   MATURITY_DATE,
   BOND_COST,
-  BOND_COUPON,
-  BOND_PRINCIPAL,
   mainStateStorage,
   manageStateStorage,
   createInitialApp,
@@ -28,7 +24,7 @@ const {
 
 describe('Manage Green Bond Tests', function () {
   let runtime;
-  let master, issuer, investor, trader, greenVerifier;
+  let master, issuer, investor, trader, greenVerifier, financialRegulator;
   let bondEscrow, bondEscrowLsig, stablecoinEscrow, stablecoinEscrowLsig;
   let mainAppId, manageAppId, bondId, stablecoinId;
 
@@ -62,7 +58,8 @@ describe('Manage Green Bond Tests', function () {
     investor = new AccountStore(MIN_BALANCE, { addr: investorAddr, sk: new Uint8Array(0) });
     trader = new AccountStore(MIN_BALANCE, { addr: traderAddr, sk: new Uint8Array(0) });
     greenVerifier = new AccountStore(MIN_BALANCE, { addr: greenVerifierAddr, sk: new Uint8Array(0) });
-    runtime = new Runtime([master, issuer, investor, trader, greenVerifier]);
+    financialRegulator = new AccountStore(MIN_BALANCE, { addr: financialRegulatorAddr, sk: new Uint8Array(0) });
+    runtime = new Runtime([master, issuer, investor, trader, greenVerifier, financialRegulator]);
 
     // create and get app id for the stateful contracts
     mainAppId = createInitialApp(runtime, master.account, mainStateStorage);
@@ -163,6 +160,27 @@ describe('Manage Green Bond Tests', function () {
         BOND_COUPON: 0
       });
       runtime.optInToApp(investorAddr, mainAppId, {}, {});
+
+      // unfreeze
+      runtime.executeTx({
+        type: types.TransactionType.CallNoOpSSC,
+        sign: types.SignType.SecretKey,
+        fromAccount: financialRegulator.account,
+        appId: mainAppId,
+        payFlags: {},
+        appArgs: [stringToBytes("freeze"), 'int:1'],
+        accounts: [investorAddr],
+      });
+      runtime.executeTx({
+        type: types.TransactionType.CallNoOpSSC,
+        sign: types.SignType.SecretKey,
+        fromAccount: financialRegulator.account,
+        appId: mainAppId,
+        payFlags: {},
+        appArgs: [stringToBytes("freeze_all"), 'int:1'],
+      });
+
+      // buy
       runtime.setRoundAndTimestamp(3, START_BUY_DATE);
       fundAsset(runtime, master.account, investorAddr, stablecoinId, BOND_COST * NUM_BONDS_BUYING);
       buyBond(NUM_BONDS_BUYING, BOND_COST);

@@ -3,6 +3,7 @@ const { Runtime, AccountStore, types } = require('@algo-builder/runtime');
 const { assert } = require('chai');
 const {
   greenVerifierAddr,
+  financialRegulatorAddr,
   investorAddr,
   issuerAddr,
   masterAddr,
@@ -24,7 +25,7 @@ const {
 
 describe('Trade Tests', function () {
   let runtime;
-  let master, issuer, investor, trader, greenVerifier;
+  let master, issuer, investor, trader, greenVerifier, financialRegulator;
   let bondEscrow, bondEscrowLsig, stablecoinEscrow, stablecoinEscrowLsig;
   let mainAppId, manageAppId, bondId, stablecoinId;
 
@@ -74,7 +75,8 @@ describe('Trade Tests', function () {
     });
     trader = new AccountStore(MIN_BALANCE, { addr: traderAddr, sk: new Uint8Array(0) });
     greenVerifier = new AccountStore(MIN_BALANCE, { addr: greenVerifierAddr, sk: new Uint8Array(0) });
-    runtime = new Runtime([master, issuer, investor, trader, greenVerifier]);
+    financialRegulator = new AccountStore(MIN_BALANCE, { addr: financialRegulatorAddr, sk: new Uint8Array(0) });
+    runtime = new Runtime([master, issuer, investor, trader, greenVerifier, financialRegulator]);
 
     // create and get app id for the stateful contracts
     mainAppId = createInitialApp(runtime, master.account, mainStateStorage);
@@ -159,6 +161,35 @@ describe('Trade Tests', function () {
       runtime.optInToApp(investorAddr, mainAppId, {}, {});
       runtime.optInToApp(traderAddr, mainAppId, {}, {});
 
+      // unfreeze
+      runtime.executeTx({
+        type: types.TransactionType.CallNoOpSSC,
+        sign: types.SignType.SecretKey,
+        fromAccount: financialRegulator.account,
+        appId: mainAppId,
+        payFlags: {},
+        appArgs: [stringToBytes("freeze"), 'int:1'],
+        accounts: [investorAddr],
+      });
+      runtime.executeTx({
+        type: types.TransactionType.CallNoOpSSC,
+        sign: types.SignType.SecretKey,
+        fromAccount: financialRegulator.account,
+        appId: mainAppId,
+        payFlags: {},
+        appArgs: [stringToBytes("freeze"), 'int:1'],
+        accounts: [traderAddr],
+      });
+      runtime.executeTx({
+        type: types.TransactionType.CallNoOpSSC,
+        sign: types.SignType.SecretKey,
+        fromAccount: financialRegulator.account,
+        appId: mainAppId,
+        payFlags: {},
+        appArgs: [stringToBytes("freeze_all"), 'int:1'],
+      });
+
+      // buy
       runtime.setRoundAndTimestamp(3, START_BUY_DATE);
       fundAsset(runtime, master.account, investorAddr, stablecoinId, BOND_COST * NUM_BONDS_BUYING);
       buyBond(NUM_BONDS_BUYING, BOND_COST);
@@ -197,6 +228,92 @@ describe('Trade Tests', function () {
       it('can set amount willing to trade', () => {
         const localTrade = getMainLocal(investorAddr, 'Trade');
         assert.equal(localTrade, WILLING_TO_TRADE);
+      });
+
+      it('cannot trade when sender account frozen', () => {
+        runtime.setRoundAndTimestamp(4, END_BUY_DATE + 1);
+
+        // freeze
+        runtime.executeTx({
+          type: types.TransactionType.CallNoOpSSC,
+          sign: types.SignType.SecretKey,
+          fromAccount: financialRegulator.account,
+          appId: mainAppId,
+          payFlags: {},
+          appArgs: [stringToBytes("freeze"), 'int:0'],
+          accounts: [investorAddr],
+        });
+        assert.equal(getMainLocal(investorAddr, 'Frozen'), 0);
+
+        // Atomic Transaction
+        const tradeTxGroup = tradeTxns(
+          NUM_BONDS_TRADING,
+          bondEscrowLsig,
+          bondId,
+          mainAppId,
+          investor.account,
+        )
+        assert.throws(
+          () => runtime.executeTx(tradeTxGroup),
+          'RUNTIME_ERR1009: TEAL runtime encountered err opcode'
+        );
+      });
+
+      it('cannot trade when receiver account frozen', () => {
+        runtime.setRoundAndTimestamp(4, END_BUY_DATE + 1);
+
+        // freeze
+        runtime.executeTx({
+          type: types.TransactionType.CallNoOpSSC,
+          sign: types.SignType.SecretKey,
+          fromAccount: financialRegulator.account,
+          appId: mainAppId,
+          payFlags: {},
+          appArgs: [stringToBytes("freeze"), 'int:0'],
+          accounts: [traderAddr],
+        });
+        assert.equal(getMainLocal(traderAddr, 'Frozen'), 0);
+
+        // Atomic Transaction
+        const tradeTxGroup = tradeTxns(
+          NUM_BONDS_TRADING,
+          bondEscrowLsig,
+          bondId,
+          mainAppId,
+          investor.account,
+        )
+        assert.throws(
+          () => runtime.executeTx(tradeTxGroup),
+          'RUNTIME_ERR1009: TEAL runtime encountered err opcode'
+        );
+      });
+
+      it('cannot trade when all frozen', () => {
+        runtime.setRoundAndTimestamp(4, END_BUY_DATE + 1);
+
+        // freeze
+        runtime.executeTx({
+          type: types.TransactionType.CallNoOpSSC,
+          sign: types.SignType.SecretKey,
+          fromAccount: financialRegulator.account,
+          appId: mainAppId,
+          payFlags: {},
+          appArgs: [stringToBytes("freeze_all"), 'int:0'],
+        });
+        assert.equal(getMainGlobal('Frozen'), 0);
+
+        // Atomic Transaction
+        const tradeTxGroup = tradeTxns(
+          NUM_BONDS_TRADING,
+          bondEscrowLsig,
+          bondId,
+          mainAppId,
+          investor.account,
+        )
+        assert.throws(
+          () => runtime.executeTx(tradeTxGroup),
+          'RUNTIME_ERR1009: TEAL runtime encountered err opcode'
+        );
       });
 
       it('cannot trade bond before or at end buy date', () => {

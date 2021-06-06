@@ -3,6 +3,7 @@ const { Runtime, AccountStore, types } = require('@algo-builder/runtime');
 const { assert } = require('chai');
 const {
   greenVerifierAddr,
+  financialRegulatorAddr,
   investorAddr,
   issuerAddr,
   masterAddr,
@@ -26,7 +27,7 @@ const {
 
 describe('Coupon Tests', function () {
   let runtime;
-  let master, issuer, investor, trader, greenVerifier;
+  let master, issuer, investor, trader, greenVerifier, financialRegulator;
   let bondEscrow, bondEscrowLsig, stablecoinEscrow, stablecoinEscrowLsig;
   let mainAppId, manageAppId, bondId, stablecoinId;
 
@@ -71,7 +72,8 @@ describe('Coupon Tests', function () {
     investor = new AccountStore(MIN_BALANCE, { addr: investorAddr, sk: new Uint8Array(0) });
     trader = new AccountStore(MIN_BALANCE, { addr: traderAddr, sk: new Uint8Array(0) });
     greenVerifier = new AccountStore(MIN_BALANCE, { addr: greenVerifierAddr, sk: new Uint8Array(0) });
-    runtime = new Runtime([master, issuer, investor, trader, greenVerifier]);
+    financialRegulator = new AccountStore(MIN_BALANCE, { addr: financialRegulatorAddr, sk: new Uint8Array(0) });
+    runtime = new Runtime([master, issuer, investor, trader, greenVerifier, financialRegulator]);
 
     // create and get app id for the stateful contracts
     mainAppId = createInitialApp(runtime, master.account, mainStateStorage);
@@ -158,6 +160,27 @@ describe('Coupon Tests', function () {
           BOND_COUPON: 0,
         });
         runtime.optInToApp(investorAddr, mainAppId, {}, {});
+
+        // unfreeze
+        runtime.executeTx({
+          type: types.TransactionType.CallNoOpSSC,
+          sign: types.SignType.SecretKey,
+          fromAccount: financialRegulator.account,
+          appId: mainAppId,
+          payFlags: {},
+          appArgs: [stringToBytes("freeze"), 'int:1'],
+          accounts: [investorAddr],
+        });
+        runtime.executeTx({
+          type: types.TransactionType.CallNoOpSSC,
+          sign: types.SignType.SecretKey,
+          fromAccount: financialRegulator.account,
+          appId: mainAppId,
+          payFlags: {},
+          appArgs: [stringToBytes("freeze_all"), 'int:1'],
+        });
+
+        // buy
         runtime.setRoundAndTimestamp(3, START_BUY_DATE);
         fundAsset(runtime, master.account, investorAddr, stablecoinId, BOND_COST * NUM_BONDS_OWNED);
         buyBond(NUM_BONDS_OWNED, BOND_COST, investor.account);
@@ -201,9 +224,101 @@ describe('Coupon Tests', function () {
           BOND_ESCROW_ADDR: bondEscrow.address,
         });
         runtime.optInToApp(investorAddr, mainAppId, {}, {});
+
+        // unfreeze
+        runtime.executeTx({
+          type: types.TransactionType.CallNoOpSSC,
+          sign: types.SignType.SecretKey,
+          fromAccount: financialRegulator.account,
+          appId: mainAppId,
+          payFlags: {},
+          appArgs: [stringToBytes("freeze"), 'int:1'],
+          accounts: [investorAddr],
+        });
+        runtime.executeTx({
+          type: types.TransactionType.CallNoOpSSC,
+          sign: types.SignType.SecretKey,
+          fromAccount: financialRegulator.account,
+          appId: mainAppId,
+          payFlags: {},
+          appArgs: [stringToBytes("freeze_all"), 'int:1'],
+        });
+
+        // buy
         runtime.setRoundAndTimestamp(3, START_BUY_DATE);
         fundAsset(runtime, master.account, investorAddr, stablecoinId, BOND_COST * NUM_BONDS_OWNED);
         buyBond(NUM_BONDS_OWNED, BOND_COST, investor.account);
+      });
+
+      it('cannot claim coupon when account frozen', () => {
+        // freeze
+        runtime.executeTx({
+          type: types.TransactionType.CallNoOpSSC,
+          sign: types.SignType.SecretKey,
+          fromAccount: financialRegulator.account,
+          appId: mainAppId,
+          payFlags: {},
+          appArgs: [stringToBytes("freeze"), 'int:0'],
+          accounts: [investorAddr],
+        });
+        assert.equal(getMainLocal(investorAddr, 'Frozen'), 0);
+
+        // claim coupon
+        runtime.setRoundAndTimestamp(4, END_BUY_DATE + PERIOD);
+        const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
+        fundAsset(runtime, master.account, stablecoinEscrowAddress, stablecoinId, BOND_COUPON * NUM_BONDS_OWNED);
+
+        // Atomic Transaction
+        const claimCouponTxGroup = claimCouponTxns(
+          NUM_BONDS_OWNED,
+          BOND_COUPON,
+          stablecoinEscrowLsig,
+          bondEscrowLsig,
+          bondId,
+          stablecoinId,
+          mainAppId,
+          manageAppId,
+          investor.account
+        )
+        assert.throws(
+          () => runtime.executeTx(claimCouponTxGroup),
+          'RUNTIME_ERR1009: TEAL runtime encountered err opcode'
+        );
+      });
+
+      it('cannot claim coupon when all frozen', () => {
+        // freeze
+        runtime.executeTx({
+          type: types.TransactionType.CallNoOpSSC,
+          sign: types.SignType.SecretKey,
+          fromAccount: financialRegulator.account,
+          appId: mainAppId,
+          payFlags: {},
+          appArgs: [stringToBytes("freeze_all"), 'int:0'],
+        });
+        assert.equal(getMainGlobal('Frozen'), 0);
+
+        // claim coupon
+        runtime.setRoundAndTimestamp(4, END_BUY_DATE + PERIOD);
+        const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
+        fundAsset(runtime, master.account, stablecoinEscrowAddress, stablecoinId, BOND_COUPON * NUM_BONDS_OWNED);
+
+        // Atomic Transaction
+        const claimCouponTxGroup = claimCouponTxns(
+          NUM_BONDS_OWNED,
+          BOND_COUPON,
+          stablecoinEscrowLsig,
+          bondEscrowLsig,
+          bondId,
+          stablecoinId,
+          mainAppId,
+          manageAppId,
+          investor.account
+        )
+        assert.throws(
+          () => runtime.executeTx(claimCouponTxGroup),
+          'RUNTIME_ERR1009: TEAL runtime encountered err opcode'
+        );
       });
 
       it('cannot claim coupon before coupon date', () => {

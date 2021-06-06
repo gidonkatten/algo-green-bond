@@ -20,6 +20,11 @@ let accounts = mkAccounts([
     name: "greenVerifier",
     addr: "OF6CYTCWXXZQCIFLUBNFZJ43V5BWZAL7BBMSQRIGUYQJVM63GIJ5SPA3JE",
     mnemonic: "rose mistake rely negative offer position another teach company aspect bar tree simple gauge donate physical exclude slam prison carpet another distance curtain able gun"
+  },
+  {
+    name: "financialRegulator",
+    addr: "NDVDOPWPQEWUL3VLQYYVD7S2LGO3ZJXQLEXBU2ZOP4AI44ZM2KINQGPFCM",
+    mnemonic: "refuse just novel someone odor athlete pottery brother aim cradle blush artefact region bomb cream life casual loud enforce lava olive series maid abstract choose"
   }
 ]);
 

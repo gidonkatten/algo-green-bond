@@ -1,8 +1,9 @@
-const { getProgram } = require('@algo-builder/algob');
+const { getProgram, stringToBytes } = require('@algo-builder/algob');
 const { Runtime, AccountStore, types } = require('@algo-builder/runtime');
 const { assert } = require('chai');
 const {
   greenVerifierAddr,
+  financialRegulatorAddr,
   investorAddr,
   issuerAddr,
   masterAddr,
@@ -21,7 +22,7 @@ const {
 
 describe('Buy Tests', function () {
   let runtime;
-  let master, issuer, investor, trader, greenVerifier;
+  let master, issuer, investor, trader, greenVerifier, financialRegulator;
   let bondEscrow, bondEscrowLsig, stablecoinEscrow, stablecoinEscrowLsig;
   let mainAppId, manageAppId, bondId, stablecoinId;
 
@@ -55,7 +56,8 @@ describe('Buy Tests', function () {
     investor = new AccountStore(MIN_BALANCE, { addr: investorAddr, sk: new Uint8Array(0) });
     trader = new AccountStore(MIN_BALANCE, { addr: traderAddr, sk: new Uint8Array(0) });
     greenVerifier = new AccountStore(MIN_BALANCE, { addr: greenVerifierAddr, sk: new Uint8Array(0) });
-    runtime = new Runtime([master, issuer, investor, trader, greenVerifier]);
+    financialRegulator = new AccountStore(MIN_BALANCE, { addr: financialRegulatorAddr, sk: new Uint8Array(0) });
+    runtime = new Runtime([master, issuer, investor, trader, greenVerifier, financialRegulator]);
 
     // create and get app id for the stateful contracts
     mainAppId = createInitialApp(runtime, master.account, mainStateStorage);
@@ -124,21 +126,96 @@ describe('Buy Tests', function () {
 
   describe('buy', function () {
 
-    it('should be able to buy bond', () => {
-      // setup
+    const NUM_BONDS_BUYING = 3;
+
+    this.beforeEach(() => {
       updateMainApp(runtime, masterAddr, mainAppId, {
         MANAGE_APP_ID: manageAppId,
         STABLECOIN_ESCROW_ADDR: stablecoinEscrow.address,
         BOND_ESCROW_ADDR: bondEscrow.address,
       });
       runtime.optInToApp(investorAddr, mainAppId, {}, {});
+
+      // unfreeze
+      runtime.executeTx({
+        type: types.TransactionType.CallNoOpSSC,
+        sign: types.SignType.SecretKey,
+        fromAccount: financialRegulator.account,
+        appId: mainAppId,
+        payFlags: {},
+        appArgs: [stringToBytes("freeze"), 'int:1'],
+        accounts: [investorAddr],
+      });
+      runtime.executeTx({
+        type: types.TransactionType.CallNoOpSSC,
+        sign: types.SignType.SecretKey,
+        fromAccount: financialRegulator.account,
+        appId: mainAppId,
+        payFlags: {},
+        appArgs: [stringToBytes("freeze_all"), 'int:1'],
+      });
+    });
+
+    it('cannot buy when account frozen', () => {
       runtime.setRoundAndTimestamp(3, START_BUY_DATE);
 
-      const NUM_BONDS_BUYING = 3;
+      // freeze
+      runtime.executeTx({
+        type: types.TransactionType.CallNoOpSSC,
+        sign: types.SignType.SecretKey,
+        fromAccount: financialRegulator.account,
+        appId: mainAppId,
+        payFlags: {},
+        appArgs: [stringToBytes("freeze"), 'int:0'],
+        accounts: [investorAddr],
+      });
+      assert.equal(getMainLocal(investorAddr, 'Frozen'), 0);
 
+      // buy
+      fundAsset(runtime, master.account, investorAddr, stablecoinId, BOND_COST * NUM_BONDS_BUYING);
+      assert.throws(() => {
+        buyBond(NUM_BONDS_BUYING, BOND_COST);
+      }, 'RUNTIME_ERR1009: TEAL runtime encountered err opcode');
+    });
+
+    it('cannot buy when all frozen', () => {
+      runtime.setRoundAndTimestamp(3, START_BUY_DATE);
+
+      // freeze
+      runtime.executeTx({
+        type: types.TransactionType.CallNoOpSSC,
+        sign: types.SignType.SecretKey,
+        fromAccount: financialRegulator.account,
+        appId: mainAppId,
+        payFlags: {},
+        appArgs: [stringToBytes("freeze_all"), 'int:0'],
+      });
+      assert.equal(getMainGlobal('Frozen'), 0);
+
+      // buy
+      fundAsset(runtime, master.account, investorAddr, stablecoinId, BOND_COST * NUM_BONDS_BUYING);
+      assert.throws(() => {
+        buyBond(NUM_BONDS_BUYING, BOND_COST);
+      }, 'RUNTIME_ERR1009: TEAL runtime encountered err opcode');
+    });
+
+    it('cannot buy when before start buy date', () => {
+      runtime.setRoundAndTimestamp(3, START_BUY_DATE - 1);
+
+      // buy
+      fundAsset(runtime, master.account, investorAddr, stablecoinId, BOND_COST * NUM_BONDS_BUYING);
+      assert.throws(() => {
+        buyBond(NUM_BONDS_BUYING, BOND_COST);
+      }, 'RUNTIME_ERR1007: Teal code rejected by logic');
+    });
+
+    it('should be able to buy bond', () => {
+      runtime.setRoundAndTimestamp(3, START_BUY_DATE);
+
+      // buy
+      const NUM_BONDS_BUYING = 3;
       fundAsset(runtime, master.account, investorAddr, stablecoinId, BOND_COST * NUM_BONDS_BUYING);
       const initialStablecoinHolding = runtime.getAssetHolding(stablecoinId, investorAddr);
-
       buyBond(NUM_BONDS_BUYING, BOND_COST);
 
       // verify bought
