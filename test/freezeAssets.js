@@ -1,5 +1,4 @@
-const { stringToBytes } = require('@algo-builder/algob');
-const { Runtime, AccountStore, types } = require('@algo-builder/runtime');
+const { Runtime, AccountStore, stringToBytes, types } = require('@algo-builder/runtime');
 const { assert } = require('chai');
 const {
   masterAddr,

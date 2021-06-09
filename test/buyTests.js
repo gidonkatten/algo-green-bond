@@ -1,5 +1,5 @@
-const { getProgram, stringToBytes } = require('@algo-builder/algob');
-const { Runtime, AccountStore, types } = require('@algo-builder/runtime');
+const { getProgram } = require('@algo-builder/algob');
+const { Runtime, AccountStore, stringToBytes, types } = require('@algo-builder/runtime');
 const { assert } = require('chai');
 const {
   greenVerifierAddr,
@@ -97,7 +97,7 @@ describe('Buy Tests', function () {
       fromAccount: master.account,
       revocationTarget: masterAddr,
       recipient: bondEscrowAddress,
-      amount: 5,
+      amount: 100000000,
       assetID: bondId,
       payFlags: {}
     });

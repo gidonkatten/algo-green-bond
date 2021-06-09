@@ -10,8 +10,8 @@ stablecoin:
   clawback: "A6BDLTPR4IEIZG4CCUGEXVMZSXTFO7RWNSOWHBWZL3CX2CLWTKW5FF4SE4"
 
 bond:
-  total: 5
-  decimals: 0
+  total: 100000000
+  decimals: 6
   defaultFrozen: true
   unitName: "bond"
   # issuer account - will clear "freezer" and "manager", and set "clawback" to bond escrow

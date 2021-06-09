@@ -1,5 +1,5 @@
-const { getProgram, stringToBytes } = require('@algo-builder/algob');
-const { Runtime, AccountStore, types } = require('@algo-builder/runtime');
+const { getProgram } = require('@algo-builder/algob');
+const { Runtime, AccountStore, stringToBytes, types } = require('@algo-builder/runtime');
 const { assert } = require('chai');
 const {
   greenVerifierAddr,
@@ -99,7 +99,7 @@ describe('Manage Green Bond Tests', function () {
       fromAccount: master.account,
       revocationTarget: masterAddr,
       recipient: bondEscrowAddress,
-      amount: 5,
+      amount: 100000000,
       assetID: bondId,
       payFlags: {}
     });
@@ -138,138 +138,6 @@ describe('Manage Green Bond Tests', function () {
     });
 
     // TODO: TEAL3
-
-  });
-
-
-  describe('Defaults', function () {
-
-    const NUM_BONDS_BUYING = 3;
-
-    beforeEach(() => {
-      updateMainApp(runtime, masterAddr, mainAppId, {
-        MANAGE_APP_ID: manageAppId,
-        STABLECOIN_ESCROW_ADDR: stablecoinEscrow.address,
-        BOND_ESCROW_ADDR: bondEscrow.address,
-        BOND_COUPON: 0
-      });
-      updateManageApp(runtime, masterAddr, manageAppId, {
-        MAIN_APP_ID: mainAppId,
-        STABLECOIN_ESCROW_ADDR: stablecoinEscrow.address,
-        BOND_ESCROW_ADDR: bondEscrow.address,
-        BOND_COUPON: 0
-      });
-      runtime.optInToApp(investorAddr, mainAppId, {}, {});
-
-      // unfreeze
-      runtime.executeTx({
-        type: types.TransactionType.CallNoOpSSC,
-        sign: types.SignType.SecretKey,
-        fromAccount: financialRegulator.account,
-        appId: mainAppId,
-        payFlags: {},
-        appArgs: [stringToBytes("freeze"), 'int:1'],
-        accounts: [investorAddr],
-      });
-      runtime.executeTx({
-        type: types.TransactionType.CallNoOpSSC,
-        sign: types.SignType.SecretKey,
-        fromAccount: financialRegulator.account,
-        appId: mainAppId,
-        payFlags: {},
-        appArgs: [stringToBytes("freeze_all"), 'int:1'],
-      });
-
-      // buy
-      runtime.setRoundAndTimestamp(3, START_BUY_DATE);
-      fundAsset(runtime, master.account, investorAddr, stablecoinId, BOND_COST * NUM_BONDS_BUYING);
-      buyBond(NUM_BONDS_BUYING, BOND_COST);
-    });
-
-    describe('has defaulted', function () {
-
-      it('yes passes', () => {
-        // Set time to when have money to owe
-        runtime.setRoundAndTimestamp(5, MATURITY_DATE);
-        const stablecoinEscrowHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrow.address);
-        assert.equal(stablecoinEscrowHolding.amount, 0);
-
-        runtime.executeTx({
-          type: types.TransactionType.CallNoOpSSC,
-          sign: types.SignType.SecretKey,
-          fromAccount: investor.account,
-          appId: manageAppId,
-          payFlags: {},
-          appArgs: [stringToBytes("defaulted")],
-          accounts: [stablecoinEscrow.address, bondEscrow.address],
-          foreignApps: [mainAppId],
-          foreignAssets: [bondId]
-        })
-      });
-
-      it('no fails', () => {
-        // Set time to when have money to owe
-        runtime.setRoundAndTimestamp(5, MATURITY_DATE);
-        const stablecoinEscrowHolding = runtime.getAssetHolding(stablecoinId, stablecoinEscrow.address);
-        assert.equal(stablecoinEscrowHolding.amount, 0);
-
-        assert.throws(() => {
-          runtime.executeTx({
-            type: types.TransactionType.CallNoOpSSC,
-            sign: types.SignType.SecretKey,
-            fromAccount: investor.account,
-            appId: manageAppId,
-            payFlags: {},
-            appArgs: [stringToBytes("not_defaulted")],
-            accounts: [stablecoinEscrow.address, bondEscrow.address],
-            foreignApps: [mainAppId],
-            foreignAssets: [bondId]
-          })
-        }, 'RUNTIME_ERR1007: Teal code rejected by logic');
-      });
-    });
-
-
-    describe('has not defaulted', function () {
-
-      it('no passes', () => {
-        // Set time to when have money to owe
-        runtime.setRoundAndTimestamp(5, MATURITY_DATE);
-        fundAsset(runtime, master.account, stablecoinEscrow.address, stablecoinId, 10000000000);
-
-        runtime.executeTx({
-          type: types.TransactionType.CallNoOpSSC,
-          sign: types.SignType.SecretKey,
-          fromAccount: investor.account,
-          appId: manageAppId,
-          payFlags: {},
-          appArgs: [stringToBytes("not_defaulted")],
-          accounts: [stablecoinEscrow.address, bondEscrow.address],
-          foreignApps: [mainAppId],
-          foreignAssets: [bondId]
-        })
-      });
-
-      it('yes fails', () => {
-        // Set time to when have money to owe
-        runtime.setRoundAndTimestamp(5, MATURITY_DATE);
-        fundAsset(runtime, master.account, stablecoinEscrow.address, stablecoinId, 10000000000);
-
-        assert.throws(() => {
-          runtime.executeTx({
-            type: types.TransactionType.CallNoOpSSC,
-            sign: types.SignType.SecretKey,
-            fromAccount: investor.account,
-            appId: manageAppId,
-            payFlags: {},
-            appArgs: [stringToBytes("defaulted")],
-            accounts: [stablecoinEscrow.address, bondEscrow.address],
-            foreignApps: [mainAppId],
-            foreignAssets: [bondId]
-          })
-        }, 'RUNTIME_ERR1007: Teal code rejected by logic');
-      });
-    });
 
   });
 

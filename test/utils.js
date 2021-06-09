@@ -1,5 +1,5 @@
-const { getProgram, stringToBytes } = require('@algo-builder/algob');
-const { types } = require('@algo-builder/runtime');
+const { getProgram } = require('@algo-builder/algob');
+const { types, stringToBytes } = require('@algo-builder/runtime');
 
 // Addresses
 const masterAddr = "A6BDLTPR4IEIZG4CCUGEXVMZSXTFO7RWNSOWHBWZL3CX2CLWTKW5FF4SE4";
@@ -17,9 +17,9 @@ const BOND_LENGTH = 2;
 const START_BUY_DATE = 50;
 const END_BUY_DATE = START_BUY_DATE + 50;
 const MATURITY_DATE = END_BUY_DATE + (PERIOD * BOND_LENGTH);
-const BOND_COST = 50e6;
-const BOND_COUPON = 25e6;
-const BOND_PRINCIPAL = 100e6;
+const BOND_COST = 50;
+const BOND_COUPON = 25;
+const BOND_PRINCIPAL = 100;
 
 const clearProgram = getProgram('greenBondClear.py');
 

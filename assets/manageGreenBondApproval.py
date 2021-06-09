@@ -31,15 +31,10 @@ def contract(args):
 
     # Implementation
     num_bonds_in_circ = bond_total.value() - bond_escrow_balance.value()
-    principal_owed = If(
-        Global.latest_timestamp() >= Int(args["MATURITY_DATE"]),
-        Int(args["BOND_PRINCIPAL"]) * num_bonds_in_circ,
-        Int(0)  # 0 if not yet maturity
-    )
     # If claiming default then need to add additional coupon (if any) to owed amount
     coupon_rounds_claimed = App.globalGetEx(Int(1), Bytes("CouponsPayed"))
-    coupon_array_slot = coupon_rounds_claimed.value() / Int(8)
-    coupon_index_slot = coupon_rounds_claimed.value() % Int(8)
+    coupon_array_slot = (coupon_rounds_claimed.value() + Int(1)) / Int(8)
+    coupon_index_slot = (coupon_rounds_claimed.value() + Int(1)) % Int(8)
     coupon_array = App.globalGetEx(Int(0), Itob(coupon_array_slot))  # Initialise if needed
     coupon_star_rating = GetByte(
         If(coupon_array.hasValue(), coupon_array.value(), Bytes("base16", "0x0000000000000000")),
@@ -55,6 +50,9 @@ def contract(args):
     #     [coupon_star_rating_stored.load() == Int(1), Int(14641)],
     #     [coupon_star_rating_stored.load() == Int(0), Int(10000)]  # TODO: How to treat star rating of 0?
     # )
+    # Only has defaulted if either:
+    #   there is a coupon to claim and coupon_owed + reserve > stablecoin_escrow_balance
+    #   have claimed all coupons and principal_owed + reserve > stablecoin_escrow_balance
     coupon_owed = Seq([
         coupon_rounds_claimed,
         coupon_array,
@@ -64,13 +62,25 @@ def contract(args):
                 Txn.application_args[0] == Bytes("claim_default"),
                 coupon_round_stored.load() > coupon_rounds_claimed.value()  # there are unclaimed coupons
             ),
-            Int(args["BOND_COUPON"]) * multiplier * num_bonds_in_circ,  # used to determine if defaulted at this coupon
+            Int(args["BOND_COUPON"]) * multiplier * num_bonds_in_circ,  # add value of one additional coupon
             Int(0)  # no additional money owed
         )
     ])
+    principal_owed = If(
+        And(
+            Txn.application_args[0] == Bytes("claim_default"),
+            Global.latest_timestamp() >= Int(args["MATURITY_DATE"]),
+            Or(
+                Int(args["BOND_LENGTH"]) == coupon_rounds_claimed.value(),
+                Int(args["BOND_COUPON"]) == Int(0)
+            )
+        ),
+        Int(args["BOND_PRINCIPAL"]) * num_bonds_in_circ,
+        Int(0)  # 0 if not yet maturity
+    )
 
     # Value owed across all bonds
-    global_value_owed_now = reserve.value() + principal_owed + coupon_owed
+    global_value_owed_now = reserve.value() + coupon_owed + principal_owed
     # Can afford to pay out all money owed - stored
     has_defaulted = global_value_owed_now > stablecoin_escrow_balance.value()
     has_defaulted_stored = ScratchVar(TealType.uint64)

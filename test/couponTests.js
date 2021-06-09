@@ -1,5 +1,5 @@
-const { getProgram, stringToBytes } = require('@algo-builder/algob');
-const { Runtime, AccountStore, types } = require('@algo-builder/runtime');
+const { getProgram } = require('@algo-builder/algob');
+const { Runtime, AccountStore, stringToBytes, types } = require('@algo-builder/runtime');
 const { assert } = require('chai');
 const {
   greenVerifierAddr,
@@ -113,7 +113,7 @@ describe('Coupon Tests', function () {
       fromAccount: master.account,
       revocationTarget: masterAddr,
       recipient: bondEscrowAddress,
-      amount: 5,
+      amount: 100000000,
       assetID: bondId,
       payFlags: {}
     });
@@ -388,31 +388,6 @@ describe('Coupon Tests', function () {
         assert.throws(
           () => runtime.executeTx(claimCouponTxGroup),
           'RUNTIME_ERR1009: TEAL runtime encountered err opcode'
-        );
-      });
-
-      it('cannot claim coupon if defaulted', () => {
-        runtime.setRoundAndTimestamp(4, END_BUY_DATE + 2 * PERIOD);
-        const stablecoinEscrowAddress = stablecoinEscrowLsig.address();
-        fundAsset(runtime, master.account, stablecoinEscrowAddress, stablecoinId, BOND_COUPON * NUM_BONDS_OWNED);
-
-        syncAccounts();
-
-        // Atomic Transaction
-        const claimCouponTxGroup = claimCouponTxns(
-          NUM_BONDS_OWNED,
-          BOND_COUPON,
-          stablecoinEscrowLsig,
-          bondEscrowLsig,
-          bondId,
-          stablecoinId,
-          mainAppId,
-          manageAppId,
-          investor.account
-        )
-        assert.throws(
-          () => runtime.executeTx(claimCouponTxGroup),
-          'RUNTIME_ERR1007: Teal code rejected by logic'
         );
       });
 

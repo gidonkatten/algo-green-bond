@@ -1,5 +1,5 @@
-const { addressToPk, getProgram } = require('@algo-builder/algob');
-const { Runtime, AccountStore, types } = require('@algo-builder/runtime');
+const { getProgram } = require('@algo-builder/algob');
+const { addressToPk, Runtime, AccountStore } = require('@algo-builder/runtime');
 const { assert } = require('chai');
 const {
   greenVerifierAddr,
