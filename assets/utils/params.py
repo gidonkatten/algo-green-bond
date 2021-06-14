@@ -1,7 +1,7 @@
 import time
 
 PERIOD = 15768000
-BOND_LENGTH = 2  # no of periods ie 1 year
+BOND_LENGTH = 4  # no of periods ie 1 year
 
 START_BUY_DATE = round(time.time())
 END_BUY_DATE = START_BUY_DATE + 50
@@ -30,8 +30,8 @@ params = {
     "END_BUY_DATE": END_BUY_DATE,
     "MATURITY_DATE": MATURITY_DATE,
     "BOND_COST": 50,  # $50.000000
-    "BOND_COUPON": 25,  # $2.500000 for 1 bond
-    "BOND_PRINCIPAL": 100,  # $100.000000 for 1 bond
-    'TRADE_PRICE': 80,  # $80.000000 for 1 bond
+    "BOND_COUPON": 25,  # $2.500000 for 1 bond or $0.000025 for 0.000001 bond
+    "BOND_PRINCIPAL": 100,  # $100.000000 for 1 bond or $0.000100 for 0.000001 bond
+    'TRADE_PRICE': 80,  # $80.000000 for 1 bond or $0.000080 for 0.000001 bond
 }
 

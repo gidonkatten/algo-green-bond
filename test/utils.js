@@ -13,7 +13,7 @@ const MIN_BALANCE = 10e6; // 10 algo
 
 // Bond parameters
 const PERIOD = 15768000;
-const BOND_LENGTH = 2;
+const BOND_LENGTH = 4;
 const START_BUY_DATE = 50;
 const END_BUY_DATE = START_BUY_DATE + 50;
 const MATURITY_DATE = END_BUY_DATE + (PERIOD * BOND_LENGTH);

@@ -76,7 +76,7 @@ def contract(args):
             )
         ),
         Int(args["BOND_PRINCIPAL"]) * num_bonds_in_circ,
-        Int(0)  # 0 if not yet maturity
+        Int(0)  # no additional money owed
     )
 
     # Value owed across all bonds
@@ -88,8 +88,11 @@ def contract(args):
     # CLAIM DEFAULT: Verify stablecoin payout
     # split remaining funds excluding 'reserve' which is unclaimed coupons amount
     stablecoin_transfer = Eq(
-        num_bonds_in_circ * Gtxn[3].asset_amount(),
-        (stablecoin_escrow_balance.value() - reserve.value()) * sender_bond_balance.value()
+        Gtxn[3].asset_amount(),
+        Div(
+            (stablecoin_escrow_balance.value() - reserve.value()) * sender_bond_balance.value(),
+            num_bonds_in_circ
+        )
     )
 
     # RATE

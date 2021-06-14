@@ -118,7 +118,7 @@ def contract(args):
     has_paid_coupons = Gtxn[3].asset_amount() == coupon_stablecoin_transfer_stored.load()
     # verify have not already claimed coupon - fail with neg unit if before end buy date:
     coupon_round = If(
-        Global.latest_timestamp() > Int(args["MATURITY_DATE"]),
+        Global.latest_timestamp() >= Int(args["MATURITY_DATE"]),
         Int(args["BOND_LENGTH"]),  # coupon round is max BOND_LENGTH
         Div(
             Global.latest_timestamp() - Int(args["END_BUY_DATE"]),
