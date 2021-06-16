@@ -13,8 +13,11 @@ def contract(args):
     linked_with_bond_escrow = Gtxn[2].sender() == Addr(args["BOND_ESCROW_ADDR"])
     linked_with_stablecoin_escrow = Gtxn[3].sender() == Addr(args["STABLECOIN_ESCROW_ADDR"])
 
-    # TODO
-    on_closeout = Int(0)
+    # Approve if do not own any bonds
+    on_closeout = Seq([
+        sender_bond_balance,
+        sender_bond_balance.value() == Int(0)
+    ])
 
     # Approve if only transaction in group
     on_opt_in = Seq([

@@ -1,5 +1,5 @@
 const { getProgram } = require('@algo-builder/algob');
-const { addressToPk, Runtime, AccountStore } = require('@algo-builder/runtime');
+const { addressToPk, Runtime, AccountStore, types } = require('@algo-builder/runtime');
 const { assert } = require('chai');
 const {
   greenVerifierAddr,
@@ -94,8 +94,8 @@ describe('Setup Tests', function () {
     });
   });
 
-  describe('Opt-in', function () {
-    it('should be able to opt-in to app', () => {
+  describe('Opt-in and close-out', function () {
+    it('should be able to opt-in to app and close-out of app', () => {
       updateMainApp(runtime, masterAddr, mainAppId, {
         MANAGE_APP_ID: manageAppId,
         STABLECOIN_ESCROW_ADDR: stablecoinEscrow.address,
@@ -111,6 +111,19 @@ describe('Setup Tests', function () {
 
       // verify opt-in
       assert.isDefined(investor.getAppFromLocal(mainAppId));
+
+      // close-out
+      runtime.executeTx({
+        type: types.TransactionType.CloseSSC,
+        sign: types.SignType.SecretKey,
+        fromAccountAddr: investorAddr,
+        appId: mainAppId,
+        payFlags: { totalFee: 1000 },
+      });
+      syncAccounts();
+
+      // verify close-out
+      assert.isUndefined(investor.getAppFromLocal(mainAppId));
     });
   });
 
