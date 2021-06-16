@@ -6,7 +6,6 @@ from utils.utils import parseArgs
 
 
 def contract(args):
-    # TODO: Verify no rekey, close out etc
 
     sender_bond_balance = AssetHolding.balance(Int(0), Int(args["BOND_ID"]))
 

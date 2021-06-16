@@ -4,10 +4,11 @@ from pyteal import *
 from utils.params import params
 from utils.utils import parseArgs
 
+
 def contract(args):
-    # TODO: Verify no rekey, close out etc
 
     asset_close_to_check = Txn.asset_close_to() == Global.zero_address()
+    rekey_check = Txn.rekey_to() == Global.zero_address()
     clawback_check = Txn.asset_sender() == Global.zero_address()
 
     # Common fee transactions
@@ -107,6 +108,7 @@ def contract(args):
     return And(
         Txn.type_enum() == TxnType.AssetTransfer,
         asset_close_to_check,
+        rekey_check,
         clawback_check,
         If(
             Global.group_size() == Int(1),

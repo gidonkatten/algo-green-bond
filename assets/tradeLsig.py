@@ -15,14 +15,17 @@ def contract(args):
         Gtxn[0].application_id() == Int(args["MAIN_APP_ID"]),
         Gtxn[0].on_completion() == OnComplete.NoOp,
         Gtxn[0].application_args[0] == Bytes("trade"),
-        Gtxn[0].fee() <= Int(1000)
+        Gtxn[0].fee() <= Int(1000),
+        Gtxn[0].rekey_to() == Global.zero_address()
     )
 
     # tx1 algo amount less than or equal to 1000
     fee = And(
         Gtxn[1].type_enum() == TxnType.Payment,
         Gtxn[1].amount() <= Int(1000),
-        Gtxn[1].fee() <= Int(1000)
+        Gtxn[1].fee() <= Int(1000),
+        Gtxn[1].rekey_to() == Global.zero_address(),
+        Gtxn[1].close_remainder_to() == Global.zero_address()
     )
 
     # max bonds being traded verified in ssc call
@@ -36,7 +39,9 @@ def contract(args):
     stablecoin = And(
         Gtxn[3].type_enum() == TxnType.AssetTransfer,
         Gtxn[3].xfer_asset() == Int(args["STABLECOIN_ID"]),
-        Gtxn[3].asset_amount() == (Int(args["TRADE_PRICE"]) * Gtxn[2].asset_amount())
+        Gtxn[3].asset_amount() == (Int(args["TRADE_PRICE"]) * Gtxn[2].asset_amount()),
+        Gtxn[3].rekey_to() == Global.zero_address(),
+        Gtxn[3].asset_close_to() == Global.zero_address()
     )
 
     return ssc_call & fee & bond & stablecoin

@@ -6,7 +6,9 @@ from utils.utils import parseArgs
 
 
 def contract(args):
-    # TODO: Verify no rekey, close out etc
+
+    asset_close_to_check = Txn.asset_close_to() == Global.zero_address()
+    rekey_check = Txn.rekey_to() == Global.zero_address()
 
     # Common fee transactions
     tx1_pay_fee_of_tx2 = And(
@@ -109,6 +111,8 @@ def contract(args):
     # Other transactions in group (if any) checked in stateful contract call
     return And(
         Txn.type_enum() == TxnType.AssetTransfer,
+        asset_close_to_check,
+        rekey_check,
         If(
             Global.group_size() == Int(1),
             opt_in,
