@@ -3,14 +3,9 @@ from pyteal import *
 
 def contract(args):
 
-    # on_creation = Int(1)  # TODO: TEAL 3
-    on_creation = Seq([
-        App.globalPut(Bytes("CreatorAddr"), Txn.sender()),
-        Int(1)
-    ])
+    on_creation = Int(1)
 
-    # on_update = Txn.sender() == Global.creator_address()  # TODO: TEAL 3
-    on_update = Txn.sender() == App.globalGet(Bytes("CreatorAddr"))
+    on_update = Txn.sender() == Global.creator_address()
 
     program = Cond(
         [Txn.application_id() == Int(0), on_creation],
@@ -23,4 +18,4 @@ def contract(args):
 if __name__ == "__main__":
     params = {}
 
-    print(compileTeal(contract(params), Mode.Application, version=2))
+    print(compileTeal(contract(params), Mode.Application, version=4))

@@ -102,15 +102,14 @@ def contract(args):
          index_slot
     )
     star_rating_stored = ScratchVar(TealType.uint64)
-    multiplier = Int(10000)  # TODO: Delete for TEAL3
-    # multiplier = Cond(
-    #     [star_rating_stored.load() == Int(5), Int(10000)],
-    #     [star_rating_stored.load() == Int(4), Int(11000)],
-    #     [star_rating_stored.load() == Int(3), Int(12100)],
-    #     [star_rating_stored.load() == Int(2), Int(13310)],
-    #     [star_rating_stored.load() == Int(1), Int(14641)],
-    #     [star_rating_stored.load() == Int(0), Int(10000)]  # TODO: How to treat star rating of 0?
-    # )
+    multiplier = Cond(
+        [star_rating_stored.load() == Int(5), Int(10000)],
+        [star_rating_stored.load() == Int(4), Int(11000)],
+        [star_rating_stored.load() == Int(3), Int(12100)],
+        [star_rating_stored.load() == Int(2), Int(13310)],
+        [star_rating_stored.load() == Int(1), Int(14641)],
+        [star_rating_stored.load() == Int(0), Int(10000)]  # TODO: How to treat star rating of 0?
+    )
 
     # verify transfer of USDC is correct amount
     coupon_val = Div(Int(args["BOND_COUPON"]) * multiplier, Int(10000))
@@ -131,8 +130,8 @@ def contract(args):
     # Combine
     coupon_verify = And(
         Txn.accounts[1] == Addr(args["BOND_ESCROW_ADDR"]),
-        # Txn.applications[1] == Int(args["MANAGE_APP_ID"]),  # TODO: TEAL 3
-        # Txn.assets[0] == Int(args["BOND_ID"]),  # TODO: TEAL 3
+        Txn.applications[1] == Int(args["MANAGE_APP_ID"]),
+        Txn.assets[0] == Int(args["BOND_ID"]),
         has_paid_coupons,
         owed_coupon,
         linked_with_stablecoin_escrow
@@ -169,7 +168,7 @@ def contract(args):
     #
     on_coupon = Seq([
         array,
-        # star_rating_stored.store(star_rating),  # TODO: TEAL 3
+        star_rating_stored.store(star_rating),
         sender_bond_balance,
         coupon_val_stored.store(coupon_val),
         coupon_stablecoin_transfer_stored.store(coupon_stablecoin_transfer),
@@ -258,4 +257,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         params = parseArgs(sys.argv[1], params)
 
-    print(compileTeal(contract(params), Mode.Application, version=2))
+    print(compileTeal(contract(params), Mode.Application, version=4))

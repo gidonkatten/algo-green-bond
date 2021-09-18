@@ -8,6 +8,7 @@
     "global-byteslices" : 1,
     "global-ints" : 5,
     "local-byteslices" : 0,
-    "local-ints" : 0
+    "local-ints" : 0,
+    "extra-pages" : 0
   } ]
 }

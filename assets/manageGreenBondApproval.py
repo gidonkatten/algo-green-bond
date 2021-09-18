@@ -41,22 +41,21 @@ def contract(args):
         coupon_index_slot
     )
     coupon_star_rating_stored = ScratchVar(TealType.uint64)
-    multiplier = Int(10000)  # TODO: Delete for TEAL3
-    # multiplier = Cond(
-    #     [coupon_star_rating_stored.load() == Int(5), Int(10000)],
-    #     [coupon_star_rating_stored.load() == Int(4), Int(11000)],
-    #     [coupon_star_rating_stored.load() == Int(3), Int(12100)],
-    #     [coupon_star_rating_stored.load() == Int(2), Int(13310)],
-    #     [coupon_star_rating_stored.load() == Int(1), Int(14641)],
-    #     [coupon_star_rating_stored.load() == Int(0), Int(10000)]  # TODO: How to treat star rating of 0?
-    # )
+    multiplier = Cond(
+        [coupon_star_rating_stored.load() == Int(5), Int(10000)],
+        [coupon_star_rating_stored.load() == Int(4), Int(11000)],
+        [coupon_star_rating_stored.load() == Int(3), Int(12100)],
+        [coupon_star_rating_stored.load() == Int(2), Int(13310)],
+        [coupon_star_rating_stored.load() == Int(1), Int(14641)],
+        [coupon_star_rating_stored.load() == Int(0), Int(10000)]  # TODO: How to treat star rating of 0?
+    )
     # Only has defaulted if either:
     #   there is a coupon to claim and coupon_owed + reserve > stablecoin_escrow_balance
     #   have claimed all coupons and principal_owed + reserve > stablecoin_escrow_balance
     coupon_owed = Seq([
         coupon_rounds_claimed,
         coupon_array,
-        # coupon_star_rating_stored.store(coupon_star_rating),  # TODO: TEAL 3
+        coupon_star_rating_stored.store(coupon_star_rating),
         If(
             And(
                 Txn.application_args[0] == Bytes("claim_default"),
@@ -144,13 +143,13 @@ def contract(args):
     # HANDLE NO OP
     handle_no_op = Seq([
         coupon_round_stored.store(coupon_round),
-        # If(Txn.application_args[0] == Bytes("rate"), on_rate),  # TODO: TEAL 3
+        If(Txn.application_args[0] == Bytes("rate"), on_rate),
         Assert(
             And(
                 Txn.accounts[1] == Addr(args["STABLECOIN_ESCROW_ADDR"]),
                 Txn.accounts[2] == Addr(args["BOND_ESCROW_ADDR"]),
-                # Txn.applications[1] == Int(args["MAIN_APP_ID"]),  # TODO: TEAL 3
-                # Txn.assets[0] == Int(args["BOND_ID"])  # TODO: TEAL 3
+                Txn.applications[1] == Int(args["MAIN_APP_ID"]),
+                Txn.assets[0] == Int(args["BOND_ID"])
             )
         ),
         stablecoin_escrow_balance,
@@ -183,4 +182,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         params = parseArgs(sys.argv[1], params)
 
-    print(compileTeal(contract(params), Mode.Application, version=2))
+    print(compileTeal(contract(params), Mode.Application, version=4))
