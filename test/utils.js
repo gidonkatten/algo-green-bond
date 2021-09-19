@@ -58,7 +58,7 @@ function createInitialApp(runtime, account, stateStorage) {
  * This function updates main app from given addr
  */
 function updateMainApp(runtime, addr, mainAppId, params) {
-  const mainApprovalProgram = getProgram('greenBondApproval.py', {
+  const mainApprovalProgram = getProgram('stateful.py', {
     PERIOD: PERIOD,
     BOND_LENGTH: BOND_LENGTH,
     START_BUY_DATE: START_BUY_DATE,
