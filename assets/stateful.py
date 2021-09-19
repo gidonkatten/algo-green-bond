@@ -2,33 +2,41 @@ from pyteal import *
 
 
 @Subroutine(TealType.uint64)
-def get_rating_round():
+def get_rating_round(time):
+    time_stored = ScratchVar(TealType.uint64)
     # Error if past maturity date
-    return Cond(
-        [Global.latest_timestamp() < App.globalGet(Bytes("end_buy_date")), Int(0)],
-        [
-            Global.latest_timestamp() <= App.globalGet(Bytes("maturity_date")),
-            Div(
-                Global.latest_timestamp() - App.globalGet(Bytes("end_buy_date")),
-                App.globalGet(Bytes("period"))
-            ) + Int(1)
-        ]
-    )
+    return Seq([
+        time_stored.store(time),
+        Cond(
+            [time_stored.load() < App.globalGet(Bytes("end_buy_date")), Int(0)],
+            [
+                time_stored.load() <= App.globalGet(Bytes("maturity_date")),
+                Div(
+                    time_stored.load() - App.globalGet(Bytes("end_buy_date")),
+                    App.globalGet(Bytes("period"))
+                ) + Int(1)
+            ]
+        )
+    ])
 
 
 @Subroutine(TealType.uint64)
-def get_coupon_rounds():
-    return Cond(
-        [Global.latest_timestamp() < App.globalGet(Bytes("end_buy_date")), Int(0)],
-        [Global.latest_timestamp() > App.globalGet(Bytes("maturity_date")), App.globalGet(Bytes("bond_length"))],
-        [
-            Int(1),  # must be between end_buy_date and maturity_date
-            Div(
-                Global.latest_timestamp() - App.globalGet(Bytes("end_buy_date")),
-                App.globalGet(Bytes("period"))
-            )
-        ]
-    )
+def get_coupon_rounds(time):
+    time_stored = ScratchVar(TealType.uint64)
+    return Seq([
+        time_stored.store(time),
+        Cond(
+            [time_stored.load() < App.globalGet(Bytes("end_buy_date")), Int(0)],
+            [time_stored.load() > App.globalGet(Bytes("maturity_date")), App.globalGet(Bytes("bond_length"))],
+            [
+                Int(1),  # must be between end_buy_date and maturity_date
+                Div(
+                    time_stored.load() - App.globalGet(Bytes("end_buy_date")),
+                    App.globalGet(Bytes("period"))
+                )
+            ]
+        )
+    ])
 
 
 @Subroutine(TealType.uint64)
@@ -75,6 +83,7 @@ def contract():
     # OTHER
     # reserve - amount of stablecoin reserved in escrow that will be used to fund coupons (used for bond defaults)
     # ratings - an array of green ratings (length 100)
+    # time - used for demo to speed up time
 
     # LOCAL STATE
     # trade - number of bonds account willing to trade
@@ -91,6 +100,14 @@ def contract():
     linked_with_bond_escrow = Gtxn[1].sender() == App.globalGet(Bytes("bond_escrow_addr"))
     linked_with_stablecoin_escrow = Gtxn[2].sender() == App.globalGet(Bytes("stablecoin_escrow_addr"))
 
+    # time
+    maybe_time = App.globalGetEx(Int(0), Bytes("time"))
+    time = If(
+        maybe_time.hasValue(),
+        maybe_time.value(),
+        Global.latest_timestamp()
+    )
+
     # Approve if do not own any bonds
     on_closeout = Seq([
         sender_bond_balance,
@@ -100,6 +117,22 @@ def contract():
     # Approve if only transaction in group
     on_opt_in = Seq([
         Assert(Global.group_size() == Int(1)),
+        Int(1)
+    ])
+
+    # ADVANCE TIME: arg is new time
+    new_time = Btoi(Txn.application_args[1])
+    on_advance_time = Seq([
+        Assert(Global.group_size() == Int(1)),
+        # time must be advancing
+        maybe_time,
+        If(
+            maybe_time.hasValue(),
+            Assert(new_time > maybe_time.value()),
+            Assert(new_time > Global.latest_timestamp())
+        ),
+        # update time
+        App.globalPut(Bytes("time"), new_time),
         Int(1)
     ])
 
@@ -132,13 +165,14 @@ def contract():
     # Update
     on_rate = Seq([
         Assert(Global.group_size() == Int(1)),
+        maybe_time,
         Assert(verify_rating_passed),
         Assert(Txn.sender() == App.globalGet(Bytes("green_verifier_addr"))),
         App.globalPut(
             Bytes("ratings"),
             SetByte(
                 App.globalGet(Bytes("ratings")),
-                get_rating_round(),
+                get_rating_round(time),
                 rating_passed
             )
         ),
@@ -162,11 +196,12 @@ def contract():
     )
     # verify in buy period
     in_buy_period = And(
-        Global.latest_timestamp() >= App.globalGet(Bytes("start_buy_date")),
-        Global.latest_timestamp() <= App.globalGet(Bytes("end_buy_date"))
+        time >= App.globalGet(Bytes("start_buy_date")),
+        time <= App.globalGet(Bytes("end_buy_date"))
     )
     on_buy = Seq([
         Assert(Global.group_size() == Int(3)),
+        maybe_time,
         # tx0 - call to this app
         Assert(buy_bond_transfer),  # tx1
         Assert(buy_stablecoin_transfer),  # tx2
@@ -181,7 +216,7 @@ def contract():
         Gtxn[1].asset_sender() == Gtxn[0].sender(),
         Gtxn[1].asset_receiver() == Gtxn[0].accounts[1],
     )
-    in_trade_window = Global.latest_timestamp() > App.globalGet(Bytes("end_buy_date"))
+    in_trade_window = time > App.globalGet(Bytes("end_buy_date"))
     receiver_approved = App.localGet(Int(1), Bytes("frozen"))
     # if receiver of bond already is an owner
     # then: verify receiver has same number of coupon payments as sender
@@ -212,6 +247,7 @@ def contract():
     #
     on_trade = Seq([
         Assert(Global.group_size() >= Int(2)),
+        maybe_time,
         # tx0 - call to this app
         Assert(trade_bond_transfer),  # tx1
         # tx 2,3,... Optional (e.g for payment when transferring bonds)
@@ -265,6 +301,7 @@ def contract():
     on_coupon = Seq([
         Assert(Global.group_size() == Int(2)),
         # setup
+        maybe_time,
         Assert(Txn.accounts[1] == App.globalGet(Bytes("bond_escrow_addr"))),
         Assert(Txn.accounts[2] == App.globalGet(Bytes("stablecoin_escrow_addr"))),
         bond_total,
@@ -278,7 +315,7 @@ def contract():
         Assert(Gtxn[1].asset_receiver() == Gtxn[0].sender()),
         Assert(Gtxn[1].asset_amount() == coupon_stablecoin_transfer_stored.load()),
         # owed coupon
-        Assert(coupons_paid < get_coupon_rounds()),
+        Assert(coupons_paid < get_coupon_rounds(time)),
         # update + check if defaulted
         update_local_cp,
         new_coupon_update,
@@ -295,7 +332,8 @@ def contract():
     #
     on_principal = Seq([
         Assert(Global.group_size() == Int(3)),
-        Assert(Global.latest_timestamp() >= App.globalGet(Bytes("maturity_date"))),
+        maybe_time,
+        Assert(time >= App.globalGet(Bytes("maturity_date"))),
         # setup
         Assert(Txn.accounts[1] == App.globalGet(Bytes("bond_escrow_addr"))),
         Assert(Txn.accounts[2] == App.globalGet(Bytes("stablecoin_escrow_addr"))),
@@ -331,14 +369,15 @@ def contract():
         )
     )
     on_default_owed = App.globalGet(Bytes("reserve")) + If(
-        Global.latest_timestamp() >= App.globalGet(Bytes("maturity_date")),
+        time >= App.globalGet(Bytes("maturity_date")),
         num_bonds_in_circ * App.globalGet(Bytes("bond_principal")),
         Int(0)
     )
     #
     on_default = Seq([
-        sender_bond_balance,
+        Assert(Global.group_size() == Int(3)),
         # setup
+        maybe_time,
         Assert(Txn.accounts[1] == App.globalGet(Bytes("bond_escrow_addr"))),
         Assert(Txn.accounts[2] == App.globalGet(Bytes("stablecoin_escrow_addr"))),
         bond_total,
@@ -373,6 +412,7 @@ def contract():
         [
             Txn.on_completion() == OnComplete.NoOp,
             Cond(
+                [Txn.application_args[0] == Bytes("advance_time"), on_advance_time],
                 [Txn.application_args[0] == Bytes("set_trade"), on_set_trade],
                 [Txn.application_args[0] == Bytes("freeze"), on_freeze],
                 [Txn.application_args[0] == Bytes("freeze_all"), on_freeze_all],
