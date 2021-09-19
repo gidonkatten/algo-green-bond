@@ -4,6 +4,10 @@ from pyteal import *
 @Subroutine(TealType.uint64)
 def get_rating_round(time):
     time_stored = ScratchVar(TealType.uint64)
+    period = Div(
+        App.globalGet(Bytes("maturity_date")) - App.globalGet(Bytes("end_buy_date")),
+        App.globalGet(Bytes("bond_length"))
+    )
     # Error if past maturity date
     return Seq([
         time_stored.store(time),
@@ -13,7 +17,7 @@ def get_rating_round(time):
                 time_stored.load() <= App.globalGet(Bytes("maturity_date")),
                 Div(
                     time_stored.load() - App.globalGet(Bytes("end_buy_date")),
-                    App.globalGet(Bytes("period"))
+                    period
                 ) + Int(1)
             ]
         )
@@ -23,6 +27,10 @@ def get_rating_round(time):
 @Subroutine(TealType.uint64)
 def get_coupon_rounds(time):
     time_stored = ScratchVar(TealType.uint64)
+    period = Div(
+        App.globalGet(Bytes("maturity_date")) - App.globalGet(Bytes("end_buy_date")),
+        App.globalGet(Bytes("bond_length"))
+    )
     return Seq([
         time_stored.store(time),
         Cond(
@@ -32,7 +40,7 @@ def get_coupon_rounds(time):
                 Int(1),  # must be between end_buy_date and maturity_date
                 Div(
                     time_stored.load() - App.globalGet(Bytes("end_buy_date")),
-                    App.globalGet(Bytes("period"))
+                    period
                 )
             ]
         )
