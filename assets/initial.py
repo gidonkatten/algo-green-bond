@@ -16,11 +16,13 @@ def contract(args):
         App.globalPut(Bytes("bond_coupon"), Btoi(Txn.application_args[4])),
         App.globalPut(Bytes("bond_principal"), Btoi(Txn.application_args[5])),
         App.globalPut(Bytes("bond_length"), Btoi(Txn.application_args[6])),
+        App.globalPut(Bytes("bond_cost"), Btoi(Txn.application_args[7])),
         # verify bond params
         Assert(App.globalGet(Bytes("bond_length")) <= Int(100)),
         # store addresses
-        App.globalPut(Bytes("financial_regulator_addr"), Txn.application_args[7]),
-        App.globalPut(Bytes("green_verifier_addr"), Txn.application_args[8]),
+        App.globalPut(Bytes("issuer_addr"), Txn.application_args[8]),
+        App.globalPut(Bytes("financial_regulator_addr"), Txn.application_args[9]),
+        App.globalPut(Bytes("green_verifier_addr"), Txn.application_args[10]),
         # initialise an array with 100 bytes for 100 integer elements
         App.globalPut(
             Bytes("ratings"),

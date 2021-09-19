@@ -12,6 +12,7 @@ def contract(args):
     # ADDRESSES
     # stablecoin_escrow_addr
     # bond_escrow_addr
+    # issuer_addr
     # financial_regulator_addr
     # green_verifier_addr
 
@@ -25,6 +26,7 @@ def contract(args):
     # bond_coupon
     # bond_principal
     # bond_length - how many coupon rounds there are
+    # bond_cost - cost in primary market
     # frozen - is all accounts frozen (0 is frozen and non 0 is not)
     # coupons_paid - the maximum local coupons_paid across all investors (used for bond defaults)
 
@@ -38,10 +40,6 @@ def contract(args):
     # coupons_paid - the number of collected coupon rounds by an account
 
     sender_bond_balance = AssetHolding.balance(Int(0), App.globalGet(Bytes("bond_id")))
-
-    # Sender is stateless contract account (clawback)
-    linked_with_bond_escrow = Gtxn[2].sender() == App.globalGet(Bytes("bond_escrow_addr"))
-    linked_with_stablecoin_escrow = Gtxn[3].sender() == App.globalGet(Bytes("stablecoin_escrow_addr"))
 
     # Approve if do not own any bonds
     on_closeout = Seq([
@@ -75,14 +73,33 @@ def contract(args):
         Int(1)
     ])
 
-    # BUY: Stateless contract account verifies everything else
+    # BUY: 3 txns
+    # tx1: transfer of bond from bond escrow to buyer
+    buy_bond_transfer = And(
+        Gtxn[1].sender() == App.globalGet(Bytes("bond_escrow_addr")),
+        Gtxn[1].asset_sender() == Gtxn[1].sender(),  # clawback from itself
+        Gtxn[1].asset_receiver() == Gtxn[0].sender(),
+    )
+    # tx2: transfer of USDC from buyer to issuer account (NoOfBonds * BondCost)
+    buy_stablecoin_transfer = And(
+        Gtxn[2].type_enum() == TxnType.AssetTransfer,
+        Gtxn[2].sender() == Gtxn[0].sender(),
+        Gtxn[2].asset_receiver() == App.globalGet(Bytes("issuer_addr")),
+        Gtxn[2].xfer_asset() == App.globalGet(Bytes("stablecoin_id")),
+        Gtxn[2].asset_amount() == (Gtxn[1].asset_amount() * App.globalGet(Bytes("bond_cost")))
+    )
     # verify in buy period
     in_buy_period = And(
         Global.latest_timestamp() >= App.globalGet(Bytes("start_buy_date")),
         Global.latest_timestamp() <= App.globalGet(Bytes("end_buy_date"))
     )
-    #
-    on_buy = linked_with_bond_escrow & in_buy_period
+    on_buy = Seq([
+        # tx0 - call to this app
+        Assert(buy_bond_transfer),  # tx1
+        Assert(buy_stablecoin_transfer),  # tx2
+        Assert(in_buy_period),
+        Int(1)
+    ])
 
     # TRADE: Stateless contract account verifies everything else
     in_trade_window = Global.latest_timestamp() > App.globalGet(Bytes("end_buy_date"))
@@ -256,26 +273,30 @@ def contract(args):
     # Fail on DeleteApplication and UpdateApplication
     # Else jump to corresponding handler
     program = Cond(
-        [Txn.on_completion() == OnComplete.DeleteApplication, Int(0)],
-        [Txn.on_completion() == OnComplete.UpdateApplication, Int(0)],
         [Txn.on_completion() == OnComplete.CloseOut, on_closeout],
         [Txn.on_completion() == OnComplete.OptIn, on_opt_in],
-        [Txn.application_args[0] == Bytes("set_trade"), on_set_trade],
-        [Txn.application_args[0] == Bytes("freeze"), on_freeze],
-        [Txn.application_args[0] == Bytes("freeze_all"), on_freeze_all],
-        [Int(1), Seq([
-            Assert(And(
-                App.globalGet(Bytes("Frozen")) > Int(0),
-                App.localGet(Int(0), Bytes("Frozen")) > Int(0),
-            )),
+        [
+            Txn.on_completion() == OnComplete.NoOp,
             Cond(
-                [Txn.application_args[0] == Bytes("buy"), on_buy],
-                [Txn.application_args[0] == Bytes("trade"), on_trade],
-                [Txn.application_args[0] == Bytes("coupon"), on_coupon],
-                [Txn.application_args[0] == Bytes("sell"), on_principal],
-                [Txn.application_args[0] == Bytes("default"), on_default]
+                [Txn.application_args[0] == Bytes("set_trade"), on_set_trade],
+                [Txn.application_args[0] == Bytes("freeze"), on_freeze],
+                [Txn.application_args[0] == Bytes("freeze_all"), on_freeze_all],
+                [
+                    Int(1),
+                    Seq([
+                        Assert(App.globalGet(Bytes("frozen")) > Int(0)),
+                        Assert(App.localGet(Int(0), Bytes("frozen")) > Int(0)),
+                        Cond(
+                            [Txn.application_args[0] == Bytes("buy"), on_buy],
+                            [Txn.application_args[0] == Bytes("trade"), on_trade],
+                            [Txn.application_args[0] == Bytes("coupon"), on_coupon],
+                            [Txn.application_args[0] == Bytes("sell"), on_principal],
+                            [Txn.application_args[0] == Bytes("default"), on_default]
+                        )
+                    ])
+                ]
             )
-        ])]
+        ],
     )
 
     # Ensure call to contract is first (in atomic group)

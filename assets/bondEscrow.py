@@ -33,30 +33,8 @@ def contract(app_id_arg, bond_id_arg, lv_arg):
         Txn.asset_close_to() == Global.zero_address()
     )
 
-    # BUY: verify there are four transactions in atomic transfer
-    # 0. call to stateful contract (verified below - linked_with_app_call)
-    # 1. fee of tx2
-    buy_fee_transfer = tx1_pay_fee_of_tx2
-    # 2. transfer of bond from bond contract account to buyer
-    buy_bond_transfer = And(
-        Gtxn[2].asset_sender() == Gtxn[2].sender(),
-        Gtxn[2].asset_receiver() == Gtxn[0].sender(),
-    )
-    # 3. transfer of USDC from buyer to issuer account (NoOfBonds * BondCost)
-    buy_stablecoin_transfer = And(
-        Gtxn[3].type_enum() == TxnType.AssetTransfer,
-        Gtxn[3].sender() == Gtxn[0].sender(),
-        Gtxn[3].asset_receiver() == Addr(args["ISSUER_ADDR"]),
-        Gtxn[3].xfer_asset() == Int(args["STABLECOIN_ID"]),
-        Gtxn[3].asset_amount() == (Gtxn[2].asset_amount() * Int(args["BOND_COST"]))
-    )
-    # Combine
-    on_buy = And(
-        Global.group_size() == Int(4),
-        buy_bond_transfer,
-        buy_fee_transfer,
-        buy_stablecoin_transfer
-    )
+    # BUY
+    on_buy = Global.group_size() == Int(3)
 
     # TRADE: verify there are at least three transactions in atomic transfer
     # NOTE: Account bond trading to is specified in account array pos 1

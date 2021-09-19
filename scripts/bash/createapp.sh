@@ -67,13 +67,14 @@ let MATURITY_DATE=$END_BUY_DATE+100
 BOND_COUPON=25 # $2.500000 for 1 bond or $0.000025 for 0.000001 bond
 BOND_PRINCIPAL=100 # $100.000000 for 1 bond or $0.000100 for 0.000001 bond
 BOND_LENGTH=4
+BOND_COST=50 # $50.000000
 
 APP_ID=$(
   ${gcmd} app create --creator ${MAIN} \
     --approval-prog $TEAL_APPROVAL_PROG \
     --clear-prog $TEAL_CLEAR_PROG \
-    --global-byteslices 5 \
-    --global-ints 10 \
+    --global-byteslices 6 \
+    --global-ints 11 \
     --local-byteslices 0 \
     --local-ints 3 \
     --app-arg "int:$START_BUY_DATE" \
@@ -83,6 +84,8 @@ APP_ID=$(
     --app-arg "int:$BOND_COUPON" \
     --app-arg "int:$BOND_PRINCIPAL" \
     --app-arg "int:$BOND_LENGTH" \
+    --app-arg "int:$BOND_COST" \
+    --app-arg "addr:$MAIN" \  # MAIN is issuer
     --app-arg "addr:$FINANCIAL_REGULATOR" \
     --app-arg "addr:$GREEN_VERIFIER" |
     grep Created |
