@@ -37,6 +37,7 @@ yarn-error.log*
 *.ltxn
 *.rej
 *.msgp
+*.teal
 
 # python
 __pycache__/

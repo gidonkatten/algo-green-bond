@@ -21,7 +21,7 @@ const BOND_COST = 50;
 const BOND_COUPON = 25;
 const BOND_PRINCIPAL = 100;
 
-const clearProgram = getProgram('greenBondClear.py');
+const clearProgram = getProgram('clear.py');
 
 const mainStateStorage = {
   localInts: 3, // CouponsPaid, Trade, Frozen
@@ -40,7 +40,7 @@ const manageStateStorage = {
  * This function creates initial app and returns its app id
  */
 function createInitialApp(runtime, account, stateStorage) {
-  const initialApprovalProgram = getProgram('initialStateful.py');
+  const initialApprovalProgram = getProgram('initial.py');
 
   // create application
   const creationFlags = {
