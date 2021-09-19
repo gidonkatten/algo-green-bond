@@ -72,6 +72,7 @@ BOND_COST=50 # $50.000000
 APP_ID=$(
   ${gcmd} app create --creator ${MAIN} \
     --approval-prog $TEAL_APPROVAL_PROG \
+    --extra-pages 1 \
     --clear-prog $TEAL_CLEAR_PROG \
     --global-byteslices 6 \
     --global-ints 11 \
@@ -85,7 +86,7 @@ APP_ID=$(
     --app-arg "int:$BOND_PRINCIPAL" \
     --app-arg "int:$BOND_LENGTH" \
     --app-arg "int:$BOND_COST" \
-    --app-arg "addr:$MAIN" \  # MAIN is issuer
+    --app-arg "addr:$MAIN" \
     --app-arg "addr:$FINANCIAL_REGULATOR" \
     --app-arg "addr:$GREEN_VERIFIER" |
     grep Created |
@@ -113,18 +114,16 @@ BOND_ESCROW_ADDRESS=$(
   | awk '{ print $2 }' \
   | head -n 1
 )
-echo "Bond Escrow Address = ${ESCROW_ADDRESS}"
 
 STABLECOIN_ESCROW_ADDRESS=$(
   ${gcmd} clerk compile -n ${TEAL_STABLECOIN_ESCROW} \
   | awk '{ print $2 }' \
   | head -n 1
 )
-echo "Stablecoin Escrow Address = ${ESCROW_ADDRESS}"
 
 # send algos to escrows
-${gcmd} clerk send -a ${1000000000} -f ${MAIN} -t ${BOND_ESCROW_ADDRESS}
-${gcmd} clerk send -a ${1000000000} -f ${MAIN} -t ${STABLECOIN_ESCROW_ADDRESS}
+${gcmd} clerk send -a 1000000000 -f ${MAIN} -t ${BOND_ESCROW_ADDRESS}
+${gcmd} clerk send -a 1000000000 -f ${MAIN} -t ${STABLECOIN_ESCROW_ADDRESS}
 
 # opt in bond escrow to bond asset and send all bonds to it
 ${gcmd} asset send -a 0 -f ${BOND_ESCROW_ADDRESS} -t ${BOND_ESCROW_ADDRESS} --assetid ${BOND_ID} -o unsigned_escrow_bond_optin.txn
@@ -147,18 +146,31 @@ echo "--------------------------------------------------------------------------
 
 
 # setup investor
-${gcmd} clerk send -a ${1000000000} -f ${MAIN} -t ${INVESTOR}
-${gcmd} asset send -a 0 -f ${ISSUER} -t ${ISSUER} --assetid ${STABLECOIN_ID}
+${gcmd} clerk send -a 1000000000 -f ${MAIN} -t ${INVESTOR}
+${gcmd} asset send -a 0 -f ${INVESTOR} -t ${INVESTOR} --assetid ${STABLECOIN_ID}
+${gcmd} asset send -a 0 -f ${INVESTOR} -t ${INVESTOR} --assetid ${BOND_ID}
 
 
 echo "-------------------------------------------------------------------------------"
 
 
 # update app
-PYTEAL_APPROVAL_PROG="../../assets/stateful.teal"
-TEAL_APPROVAL_PROG="../../assets/stateful.teal"
+UPDATED_PYTEAL_APPROVAL_PROG="../../assets/stateful.teal"
+UPDATED_TEAL_APPROVAL_PROG="../../assets/stateful.teal"
 
-${gcmd} app update --app-id ${APP_ID} --approval-prog ${TEAL_APPROVAL_PROG} --clear-prog ${TEAL_CLEAR_PROG} --from ${MAIN}
+# compile PyTeal into TEAL
+#"$PYTHON" "$UPDATED_PYTEAL_APPROVAL_PROG" > "$UPDATED_TEAL_APPROVAL_PROG"
+
+${gcmd} app update \
+  --app-id ${APP_ID} \
+  --approval-prog ${UPDATED_TEAL_APPROVAL_PROG} \
+  --clear-prog ${TEAL_CLEAR_PROG} \
+  --from ${MAIN} \
+  --app-arg "addr:${STABLECOIN_ESCROW_ADDRESS}" \
+  --app-arg "addr:${BOND_ESCROW_ADDRESS}"
 
 # Read global state of contract
 ${gcmd} app read --app-id ${APP_ID} --guess-format --global --from ${MAIN}
+
+rm -f *.ltxn
+rm -f *.txn

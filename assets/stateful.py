@@ -1,11 +1,53 @@
-import sys
-
 from pyteal import *
-from utils.params import params
-from utils.utils import parseArgs
 
 
-def contract(args):
+@Subroutine(TealType.uint64)
+def get_rating_round():
+    # Error if past maturity date
+    return Cond(
+        [Global.latest_timestamp() < App.globalGet(Bytes("end_buy_date")), Int(0)],
+        [
+            Global.latest_timestamp() <= App.globalGet(Bytes("maturity_date")),
+            Div(
+                Global.latest_timestamp() - App.globalGet(Bytes("end_buy_date")),
+                App.globalGet(Bytes("period"))
+            ) + Int(1)
+        ]
+    )
+
+
+@Subroutine(TealType.uint64)
+def get_coupon_rounds():
+    return Cond(
+        [Global.latest_timestamp() < App.globalGet(Bytes("end_buy_date")), Int(0)],
+        [Global.latest_timestamp() > App.globalGet(Bytes("maturity_date")), App.globalGet(Bytes("bond_length"))],
+        [
+            Int(1),  # must be between end_buy_date and maturity_date
+            Div(
+                Global.latest_timestamp() - App.globalGet(Bytes("end_buy_date")),
+                App.globalGet(Bytes("period"))
+            )
+        ]
+    )
+
+
+@Subroutine(TealType.uint64)
+def get_multiplier(rating):
+    rating_stored = ScratchVar(TealType.uint64)
+    return Seq([
+        rating_stored.store(rating),
+        Cond(
+            [rating_stored.load() == Int(5), Int(10000)],
+            [rating_stored.load() == Int(4), Int(11000)],
+            [rating_stored.load() == Int(3), Int(12100)],
+            [rating_stored.load() == Int(2), Int(13310)],
+            [rating_stored.load() == Int(1), Int(14641)],
+            [rating_stored.load() == Int(0), Int(10000)]  # TODO: How to treat star rating of 0?
+        )
+    ])
+
+
+def contract():
 
     # GLOBAL STATE
 
@@ -31,7 +73,7 @@ def contract(args):
     # coupons_paid - the maximum local coupons_paid across all investors (used for bond defaults)
 
     # OTHER
-    # reserve - amount of stablecoin reserved in escrow that will be used to fund payments (used for bond defaults)
+    # reserve - amount of stablecoin reserved in escrow that will be used to fund coupons (used for bond defaults)
     # ratings - an array of green ratings (length 100)
 
     # LOCAL STATE
@@ -40,6 +82,14 @@ def contract(args):
     # coupons_paid - the number of collected coupon rounds by an account
 
     sender_bond_balance = AssetHolding.balance(Int(0), App.globalGet(Bytes("bond_id")))
+    bond_escrow_balance = AssetHolding.balance(Int(1), App.globalGet(Bytes("bond_id")))
+    stablecoin_escrow_balance = AssetHolding.balance(Int(2), App.globalGet(Bytes("stablecoin_id")))
+    bond_total = AssetParam.total(App.globalGet(Bytes("bond_id")))
+    num_bonds_in_circ = bond_total.value() - bond_escrow_balance.value()
+
+    # link with escrow
+    linked_with_bond_escrow = Gtxn[1].sender() == App.globalGet(Bytes("bond_escrow_addr"))
+    linked_with_stablecoin_escrow = Gtxn[2].sender() == App.globalGet(Bytes("stablecoin_escrow_addr"))
 
     # Approve if do not own any bonds
     on_closeout = Seq([
@@ -55,12 +105,14 @@ def contract(args):
 
     # SET TRADE: arg is number of bonds willing to trade
     on_set_trade = Seq([
+        Assert(Global.group_size() == Int(1)),
         App.localPut(Int(0), Bytes("trade"), Btoi(Txn.application_args[1])),
         Int(1)
     ])
 
     # FREEZE: one address - 0 is frozen and non 0 is not
     on_freeze = Seq([
+        Assert(Global.group_size() == Int(1)),
         Assert(Txn.sender() == App.globalGet(Bytes("financial_regulator_addr"))),
         App.localPut(Int(1), Bytes("frozen"), Btoi(Txn.application_args[1])),
         Int(1)
@@ -68,15 +120,35 @@ def contract(args):
 
     # FREEZE_ALL: everyone - 0 is frozen and non 0 is not
     on_freeze_all = Seq([
+        Assert(Global.group_size() == Int(1)),
         Assert(Txn.sender() == App.globalGet(Bytes("financial_regulator_addr"))),
         App.globalPut(Bytes("frozen"), Btoi(Txn.application_args[1])),
+        Int(1)
+    ])
+
+    # RATE
+    rating_passed = Btoi(Txn.application_args[1])
+    verify_rating_passed = And(rating_passed >= Int(1), rating_passed <= Int(5))
+    # Update
+    on_rate = Seq([
+        Assert(Global.group_size() == Int(1)),
+        Assert(verify_rating_passed),
+        Assert(Txn.sender() == App.globalGet(Bytes("green_verifier_addr"))),
+        App.globalPut(
+            Bytes("ratings"),
+            SetByte(
+                App.globalGet(Bytes("ratings")),
+                get_rating_round(),
+                rating_passed
+            )
+        ),
         Int(1)
     ])
 
     # BUY: 3 txns
     # tx1: transfer of bond from bond escrow to buyer
     buy_bond_transfer = And(
-        Gtxn[1].sender() == App.globalGet(Bytes("bond_escrow_addr")),
+        linked_with_bond_escrow,
         Gtxn[1].asset_sender() == Gtxn[1].sender(),  # clawback from itself
         Gtxn[1].asset_receiver() == Gtxn[0].sender(),
     )
@@ -94,6 +166,7 @@ def contract(args):
         Global.latest_timestamp() <= App.globalGet(Bytes("end_buy_date"))
     )
     on_buy = Seq([
+        Assert(Global.group_size() == Int(3)),
         # tx0 - call to this app
         Assert(buy_bond_transfer),  # tx1
         Assert(buy_stablecoin_transfer),  # tx2
@@ -101,7 +174,13 @@ def contract(args):
         Int(1)
     ])
 
-    # TRADE: Stateless contract account verifies everything else
+    # TRADE: 2+ txns
+    # tx1. transfer of bond from sender to account 2
+    trade_bond_transfer = And(
+        linked_with_bond_escrow,
+        Gtxn[1].asset_sender() == Gtxn[0].sender(),
+        Gtxn[1].asset_receiver() == Gtxn[0].accounts[1],
+    )
     in_trade_window = Global.latest_timestamp() > App.globalGet(Bytes("end_buy_date"))
     receiver_approved = App.localGet(Int(1), Bytes("frozen"))
     # if receiver of bond already is an owner
@@ -132,7 +211,12 @@ def contract(args):
     )
     #
     on_trade = Seq([
-        Assert(And(linked_with_bond_escrow, in_trade_window, receiver_approved)),
+        Assert(Global.group_size() >= Int(2)),
+        # tx0 - call to this app
+        Assert(trade_bond_transfer),  # tx1
+        # tx 2,3,... Optional (e.g for payment when transferring bonds)
+        Assert(in_trade_window),
+        Assert(receiver_approved),
         has_same_num_installments,
         update_trade,
         Int(1)
@@ -141,58 +225,20 @@ def contract(args):
     # CLAIM COUPON: Stateless contract accounts verifies everything else
     # check star rating
     coupons_paid = App.localGet(Int(0), Bytes("coupons_paid"))
-    array_slot = (coupons_paid + Int(1)) / Int(8)
-    index_slot = (coupons_paid + Int(1)) % Int(8)
-    array = App.globalGetEx(Int(1), Itob(array_slot))  # May need to initialise
-    star_rating = GetByte(
-         If(array.hasValue(), array.value(), Bytes("base16", "0x0000000000000000")),
-         index_slot
-    )
-    star_rating_stored = ScratchVar(TealType.uint64)
-    multiplier = Cond(
-        [star_rating_stored.load() == Int(5), Int(10000)],
-        [star_rating_stored.load() == Int(4), Int(11000)],
-        [star_rating_stored.load() == Int(3), Int(12100)],
-        [star_rating_stored.load() == Int(2), Int(13310)],
-        [star_rating_stored.load() == Int(1), Int(14641)],
-        [star_rating_stored.load() == Int(0), Int(10000)]  # TODO: How to treat star rating of 0?
-    )
-
+    star_rating = GetByte(App.globalGet(Bytes("ratings")), coupons_paid + Int(1))
+    multiplier = get_multiplier(star_rating)
     # verify transfer of USDC is correct amount
     coupon_val = Div(App.globalGet(Bytes("bond_coupon")) * multiplier, Int(10000))
     coupon_val_stored = ScratchVar(TealType.uint64)
     coupon_stablecoin_transfer = coupon_val_stored.load() * sender_bond_balance.value()
     coupon_stablecoin_transfer_stored = ScratchVar(TealType.uint64)
-    has_paid_coupons = Gtxn[3].asset_amount() == coupon_stablecoin_transfer_stored.load()
-    # verify have not already claimed coupon - fail with neg unit if before end buy date:
-    coupon_round = If(
-        Global.latest_timestamp() >= App.globalGet(Bytes("maturity_date")),
-        App.globalGet(Bytes("bond_length")),  # coupon round is max BOND_LENGTH
-        Div(
-            Global.latest_timestamp() - App.globalGet(Bytes("end_buy_date")),
-            Int(args["PERIOD"])
-        )
-    )
-    owed_coupon = coupons_paid < coupon_round
-    # Combine
-    coupon_verify = And(
-        Txn.accounts[1] == App.globalGet(Bytes("bond_escrow_addr")),
-        Txn.applications[1] == Int(args["MANAGE_APP_ID"]),
-        Txn.assets[0] == App.globalGet(Bytes("bond_id")),
-        has_paid_coupons,
-        owed_coupon,
-        linked_with_stablecoin_escrow
-    )
     # Update local coupons paid
     update_local_cp = App.localPut(
         Int(0),
         Bytes("coupons_paid"),
         App.localGet(Int(0), Bytes("coupons_paid")) + Int(1)
     )
-    # If claiming coupon for first time then update global coupons paid and reserve
-    bond_escrow_balance = AssetHolding.balance(Int(1), App.globalGet(Bytes("bond_id")))
-    bond_total = AssetParam.total(Int(0))
-    num_bonds_in_circ = bond_total.value() - bond_escrow_balance.value()
+    # If claiming coupon for first time then update global coupons paid and reserve and verify has not defaulted
     new_coupon_update = If(
         App.localGet(Int(0), Bytes("coupons_paid")) > App.globalGet(Bytes("coupons_paid")),
         Seq([
@@ -203,7 +249,10 @@ def contract(args):
             App.globalPut(
                 Bytes("reserve"),
                 App.globalGet(Bytes("reserve")) + num_bonds_in_circ * coupon_val_stored.load()
-            )
+            ),
+            # can afford to pay new coupon round
+            stablecoin_escrow_balance,
+            Assert(App.globalGet(Bytes("reserve")) <= stablecoin_escrow_balance.value())
         ])
 
     )
@@ -214,14 +263,23 @@ def contract(args):
     )
     #
     on_coupon = Seq([
-        array,
-        star_rating_stored.store(star_rating),
+        Assert(Global.group_size() == Int(2)),
+        # setup
+        Assert(Txn.accounts[1] == App.globalGet(Bytes("bond_escrow_addr"))),
+        Assert(Txn.accounts[2] == App.globalGet(Bytes("stablecoin_escrow_addr"))),
+        bond_total,
         sender_bond_balance,
+        bond_escrow_balance,
         coupon_val_stored.store(coupon_val),
         coupon_stablecoin_transfer_stored.store(coupon_stablecoin_transfer),
-        bond_escrow_balance,
-        bond_total,
-        Assert(coupon_verify),
+        # tx0 - call to this app
+        # tx1 - coupon stablecoin transfer from escrow to caller
+        Assert(linked_with_stablecoin_escrow),
+        Assert(Gtxn[1].asset_receiver() == Gtxn[0].sender()),
+        Assert(Gtxn[1].asset_amount() == coupon_stablecoin_transfer_stored.load()),
+        # owed coupon
+        Assert(coupons_paid < get_coupon_rounds()),
+        # update + check if defaulted
         update_local_cp,
         new_coupon_update,
         sub_reserve,
@@ -229,42 +287,79 @@ def contract(args):
     ])
 
     # CLAIM PRINCIPAL: Stateless contract accounts verifies everything else
-    # verify claiming principal for all bonds owned
-    is_all_bonds = Gtxn[2].asset_amount() == sender_bond_balance.value()
-    # verify have collected all coupon payments or no coupons exists
     collected_all_coupons = Or(
         App.globalGet(Bytes("bond_length")) == App.localGet(Int(0), Bytes("coupons_paid")),
         App.globalGet(Bytes("bond_coupon")) == Int(0)
     )
-    # Combine
-    principal_verify = And(
-        is_all_bonds,
-        collected_all_coupons,
-        linked_with_bond_escrow,
-        linked_with_stablecoin_escrow,
-        Global.latest_timestamp() >= App.globalGet(Bytes("maturity_date"))
-    )
+    on_principal_owed = App.globalGet(Bytes("reserve")) + (num_bonds_in_circ * App.globalGet(Bytes("bond_principal")))
     #
     on_principal = Seq([
+        Assert(Global.group_size() == Int(3)),
+        Assert(Global.latest_timestamp() >= App.globalGet(Bytes("maturity_date"))),
+        # setup
+        Assert(Txn.accounts[1] == App.globalGet(Bytes("bond_escrow_addr"))),
+        Assert(Txn.accounts[2] == App.globalGet(Bytes("stablecoin_escrow_addr"))),
+        bond_total,
         sender_bond_balance,
-        Assert(principal_verify),
+        bond_escrow_balance,
+        # tx0 - call to this app
+        # tx1 - bond transfer from caller to escrow
+        Assert(linked_with_bond_escrow),
+        Assert(Gtxn[1].asset_sender() == Gtxn[0].sender()),
+        Assert(Gtxn[1].asset_receiver() == Gtxn[1].sender()),
+        Assert(Gtxn[1].asset_amount() == sender_bond_balance.value()),  # verify claiming principal for all bonds owned
+        # tx2 - principal stablecoin transfer from escrow to caller
+        Assert(linked_with_stablecoin_escrow),
+        Assert(Gtxn[2].asset_receiver() == Gtxn[0].sender()),
+        Assert(Gtxn[2].asset_amount() == (Gtxn[1].asset_amount() * App.globalGet(Bytes("bond_principal")))),
+        # verify have collected all coupon payments or no coupons exists
+        Assert(collected_all_coupons),
+        # verify has not defaulted
+        stablecoin_escrow_balance,
+        Assert(on_principal_owed <= stablecoin_escrow_balance.value()),
+        # update local state
         App.localDel(Int(0), Bytes("coupons_paid")),
         Int(1)
     ])
 
     # CLAIM DEFAULT: Stateless contract accounts verifies everything else
-    # verify have collected all coupons available
-    collected_available_coupons = App.localGet(Int(0), Bytes("coupons_paid")) == App.globalGet(Bytes("coupons_paid"))
-    # combine
-    default_verify = And(
-        collected_available_coupons,
-        is_all_bonds,
-        linked_with_bond_escrow,
-        linked_with_stablecoin_escrow
+    stablecoin_transfer = Eq(
+        Gtxn[2].asset_amount(),
+        Div(
+            (stablecoin_escrow_balance.value() - App.globalGet(Bytes("reserve"))) * sender_bond_balance.value(),
+            num_bonds_in_circ
+        )
     )
+    on_default_owed = App.globalGet(Bytes("reserve")) + If(
+        Global.latest_timestamp() >= App.globalGet(Bytes("maturity_date")),
+        num_bonds_in_circ * App.globalGet(Bytes("bond_principal")),
+        Int(0)
+    )
+    #
     on_default = Seq([
         sender_bond_balance,
-        Assert(default_verify),
+        # setup
+        Assert(Txn.accounts[1] == App.globalGet(Bytes("bond_escrow_addr"))),
+        Assert(Txn.accounts[2] == App.globalGet(Bytes("stablecoin_escrow_addr"))),
+        bond_total,
+        sender_bond_balance,
+        bond_escrow_balance,
+        # tx0 - call to this app
+        # tx1 - bond transfer from caller to escrow
+        Assert(linked_with_bond_escrow),
+        Assert(Gtxn[1].asset_sender() == Gtxn[0].sender()),
+        Assert(Gtxn[1].asset_receiver() == Gtxn[1].sender()),
+        Assert(Gtxn[1].asset_amount() == sender_bond_balance.value()),  # verify claiming principal for all bonds owned
+        # tx2 - principal stablecoin transfer from escrow to caller
+        stablecoin_escrow_balance,
+        Assert(linked_with_stablecoin_escrow),
+        Assert(Gtxn[2].asset_receiver() == Gtxn[0].sender()),
+        Assert(stablecoin_transfer),
+        # verify have collected all coupons available
+        Assert(App.localGet(Int(0), Bytes("coupons_paid")) == App.globalGet(Bytes("coupons_paid"))),
+        # verify has defaulted
+        Assert(on_default_owed > stablecoin_escrow_balance.value()),
+        # update local state
         App.localDel(Int(0), Bytes("coupons_paid")),
         Int(1)
     ])
@@ -281,6 +376,7 @@ def contract(args):
                 [Txn.application_args[0] == Bytes("set_trade"), on_set_trade],
                 [Txn.application_args[0] == Bytes("freeze"), on_freeze],
                 [Txn.application_args[0] == Bytes("freeze_all"), on_freeze_all],
+                [Txn.application_args[0] == Bytes("rate"), on_rate],
                 [
                     Int(1),
                     Seq([
@@ -304,8 +400,4 @@ def contract(args):
 
 
 if __name__ == "__main__":
-    # Overwrite params if sys.argv[1] is passed
-    if len(sys.argv) > 1:
-        params = parseArgs(sys.argv[1], params)
-
-    print(compileTeal(contract(params), Mode.Application, version=4))
+    print(compileTeal(contract(), Mode.Application, version=4))

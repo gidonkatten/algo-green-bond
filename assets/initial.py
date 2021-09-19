@@ -1,9 +1,10 @@
 from pyteal import *
 
 
-def contract(args):
+def contract():
 
     on_creation = Seq([
+        Assert(Txn.application_args.length() == Int(11)),
         # store timings
         App.globalPut(Bytes("start_buy_date"), Btoi(Txn.application_args[0])),
         App.globalPut(Bytes("end_buy_date"), Btoi(Txn.application_args[1])),
@@ -18,7 +19,7 @@ def contract(args):
         App.globalPut(Bytes("bond_length"), Btoi(Txn.application_args[6])),
         App.globalPut(Bytes("bond_cost"), Btoi(Txn.application_args[7])),
         # verify bond params
-        Assert(App.globalGet(Bytes("bond_length")) <= Int(100)),
+        Assert(App.globalGet(Bytes("bond_length")) < Int(100)),
         # store addresses
         App.globalPut(Bytes("issuer_addr"), Txn.application_args[8]),
         App.globalPut(Bytes("financial_regulator_addr"), Txn.application_args[9]),
@@ -33,6 +34,8 @@ def contract(args):
 
     on_update = Seq([
         Assert(Txn.sender() == Global.creator_address()),
+        Assert(Txn.application_args.length() == Int(2)),
+        # store addresses
         App.globalPut(Bytes("stablecoin_escrow_addr"), Txn.application_args[0]),
         App.globalPut(Bytes("bond_escrow_addr"), Txn.application_args[1]),
         Int(1)
@@ -47,6 +50,4 @@ def contract(args):
 
 
 if __name__ == "__main__":
-    params = {}
-
-    print(compileTeal(contract(params), Mode.Application, version=4))
+    print(compileTeal(contract(), Mode.Application, version=4))

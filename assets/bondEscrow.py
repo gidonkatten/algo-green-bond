@@ -9,20 +9,6 @@ def contract(app_id_arg, bond_id_arg, lv_arg):
     rekey_check = Txn.rekey_to() == Global.zero_address()
     fee_check = Txn.fee() == Int(0)
 
-    # Common fee transactions
-    tx1_pay_fee_of_tx2 = And(
-        Gtxn[1].type_enum() == TxnType.Payment,
-        Gtxn[1].sender() == Gtxn[0].sender(),
-        Gtxn[1].receiver() == Gtxn[2].sender(),
-        Gtxn[1].amount() >= Gtxn[2].fee(),
-    )
-    tx4_pay_fee_of_tx2 = And(
-        Gtxn[4].type_enum() == TxnType.Payment,
-        Gtxn[4].sender() == Gtxn[0].sender(),
-        Gtxn[4].receiver() == Gtxn[2].sender(),
-        Gtxn[4].amount() >= Gtxn[2].fee(),
-    )
-
     # Opt into bond asset
     opt_in = And(
         Txn.asset_amount() == Int(0),
@@ -36,42 +22,11 @@ def contract(app_id_arg, bond_id_arg, lv_arg):
     # BUY
     on_buy = Global.group_size() == Int(3)
 
-    # TRADE: verify there are at least three transactions in atomic transfer
-    # NOTE: Account bond trading to is specified in account array pos 1
-    # 0. call to stateful contract (verified below - linked_with_app_call)
-    # 1. fee of tx2
-    trade_fee_transfer = tx1_pay_fee_of_tx2
-    # 2. transfer of bond from sender to account 2
-    trade_bond_transfer = And(
-        Gtxn[2].asset_sender() == Gtxn[0].sender(),
-        Gtxn[2].asset_receiver() == Gtxn[0].accounts[1],
-    )
-    # 3,4,... Optional (e.g for payment when transferring bonds)
-    # Combine
-    on_trade = And(
-        Global.group_size() >= Int(3),
-        trade_bond_transfer,
-        trade_fee_transfer
-    )
+    # TRADE
+    on_trade = Global.group_size() >= Int(2)
 
-    # CLAIM PRINCIPAL OR DEFAULT: verify there are five transactions in atomic transfer
-    # 0. call to this contract (verified below)
-    # 1. call to manage stateful contract (verified in stablecoin escrow)
-    # 2. transfer of bond from sender to bond contract account (+ opting out)
-    end_bond_transfer = And(
-        Gtxn[2].asset_sender() == Gtxn[0].sender(),
-        Gtxn[2].asset_receiver() == Gtxn[2].sender(),
-    )
-    # 3. transfer of USDC from stablecoin contract account to sender (verified in stablecoin escrow)
-    # 4. fee of tx2
-    end_fee_transfer1 = tx4_pay_fee_of_tx2
-    # 5. fee of tx3 (verified in stablecoin escrow)
-    # Combine
-    on_end = And(
-        Global.group_size() == Int(6),
-        end_bond_transfer,
-        end_fee_transfer1,
-    )
+    # CLAIM PRINCIPAL OR DEFAULT
+    on_end = Global.group_size() == Int(3)
 
     # common to all functions
     linked_with_app_call = And(
@@ -79,9 +34,9 @@ def contract(app_id_arg, bond_id_arg, lv_arg):
         Gtxn[0].application_id() == Int(app_id_arg)
     )
     bond_transfer = And(
-        Txn.group_index() == Int(2),
-        Gtxn[2].type_enum() == TxnType.AssetTransfer,
-        Gtxn[2].xfer_asset() == Int(args["BOND_ID"])
+        Txn.group_index() == Int(1),
+        Gtxn[1].type_enum() == TxnType.AssetTransfer,
+        Gtxn[1].xfer_asset() == Int(bond_id_arg)
     )
 
     # Since asset transfer, cannot have rekey
@@ -100,8 +55,13 @@ def contract(app_id_arg, bond_id_arg, lv_arg):
                 Cond(
                     [Gtxn[0].application_args[0] == Bytes("buy"), on_buy],
                     [Gtxn[0].application_args[0] == Bytes("trade"), on_trade],
-                    [Or(Gtxn[0].application_args[0] == Bytes("sell"),
-                        Gtxn[0].application_args[0] == Bytes("default")), on_end]
+                    [
+                        Or(
+                            Gtxn[0].application_args[0] == Bytes("sell"),
+                            Gtxn[0].application_args[0] == Bytes("default")
+                        ),
+                        on_end
+                    ]
                 )
             ])
         )
