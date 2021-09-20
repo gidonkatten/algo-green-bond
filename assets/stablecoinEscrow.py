@@ -10,6 +10,13 @@ def contract(app_id_arg, stablecoin_id_arg, lv_arg):
     clawback_check = Txn.asset_sender() == Global.zero_address()
     fee_check = Txn.fee() == Int(0)
 
+    def stablecoin_transfer(txn_no) -> NaryExpr:
+        return And(
+            Txn.group_index() == Int(txn_no),
+            Gtxn[txn_no].type_enum() == TxnType.AssetTransfer,
+            Gtxn[txn_no].xfer_asset() == Int(stablecoin_id_arg)
+        )
+
     # Opt into stablecoin asset
     opt_in = And(
         Txn.asset_amount() == Int(0),
@@ -19,23 +26,18 @@ def contract(app_id_arg, stablecoin_id_arg, lv_arg):
     )
 
     # CLAIM COUPON
-    on_coupon = Global.group_size() == Int(2)
+    on_coupon = (Global.group_size() == Int(2)) & stablecoin_transfer(1)
 
     # CLAIM PRINCIPAL
-    on_principal = Global.group_size() == Int(3)
+    on_principal = (Global.group_size() == Int(3)) & stablecoin_transfer(2)
 
     # CLAIM DEFAULT
-    on_default = Global.group_size() == Int(3)
+    on_default = Global.group_size() == Int(3) & stablecoin_transfer(2)
 
     # common to all functions
     linked_with_app_call = And(
         Gtxn[0].type_enum() == TxnType.ApplicationCall,
         Gtxn[0].application_id() == Int(app_id_arg)
-    )
-    stablecoin_transfer = And(
-        Txn.group_index() == Int(2),
-        Gtxn[2].type_enum() == TxnType.AssetTransfer,
-        Gtxn[2].xfer_asset() == Int(stablecoin_id_arg)
     )
 
     # Since asset transfer, cannot have rekey or close-to
@@ -51,7 +53,6 @@ def contract(app_id_arg, stablecoin_id_arg, lv_arg):
             Seq([
                 Assert(fee_check),
                 Assert(linked_with_app_call),
-                Assert(stablecoin_transfer),
                 Cond(
                     [Gtxn[0].application_args[0] == Bytes("coupon"), on_coupon],
                     [Gtxn[0].application_args[0] == Bytes("sell"), on_principal],
