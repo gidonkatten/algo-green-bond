@@ -1,3 +1,5 @@
+import sys
+
 from pyteal import *
 
 
@@ -63,7 +65,7 @@ def get_multiplier(rating):
     ])
 
 
-def contract():
+def contract(stablecoin_id_arg):
 
     # GLOBAL STATE
 
@@ -100,7 +102,7 @@ def contract():
 
     sender_bond_balance = AssetHolding.balance(Int(0), App.globalGet(Bytes("bond_id")))
     bond_escrow_balance = AssetHolding.balance(Int(1), App.globalGet(Bytes("bond_id")))
-    stablecoin_escrow_balance = AssetHolding.balance(Int(2), App.globalGet(Bytes("stablecoin_id")))
+    stablecoin_escrow_balance = AssetHolding.balance(Int(2), Int(stablecoin_id))
     bond_total = AssetParam.total(App.globalGet(Bytes("bond_id")))
     num_bonds_in_circ = bond_total.value() - bond_escrow_balance.value()
 
@@ -199,7 +201,7 @@ def contract():
         Gtxn[2].type_enum() == TxnType.AssetTransfer,
         Gtxn[2].sender() == Gtxn[0].sender(),
         Gtxn[2].asset_receiver() == App.globalGet(Bytes("issuer_addr")),
-        Gtxn[2].xfer_asset() == App.globalGet(Bytes("stablecoin_id")),
+        Gtxn[2].xfer_asset() == Int(stablecoin_id),
         Gtxn[2].asset_amount() == (Gtxn[1].asset_amount() * App.globalGet(Bytes("bond_cost")))
     )
     # verify in buy period
@@ -448,4 +450,6 @@ def contract():
 
 
 if __name__ == "__main__":
-    print(compileTeal(contract(), Mode.Application, version=4))
+    stablecoin_id = int(sys.argv[1])
+
+    print(compileTeal(contract(stablecoin_id), Mode.Application, version=4))

@@ -41,7 +41,7 @@ def contract(app_id_arg, stablecoin_id_arg, bond_id_arg, lv_arg, trade_price_arg
 if __name__ == "__main__":
     app_id = int(sys.argv[1])
     stablecoin_id = int(sys.argv[2])
-    bond_id = int(sys.argv[2])
+    bond_id = int(sys.argv[3])
     lv = int(sys.argv[4])
     trade_price = int(sys.argv[5])
 
