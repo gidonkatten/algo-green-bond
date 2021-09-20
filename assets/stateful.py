@@ -252,7 +252,7 @@ def contract(stablecoin_id_arg):
     update_trade = App.localPut(
         Int(0),
         Bytes("trade"),
-        App.localGet(Int(0), Bytes("trade")) - Gtxn[2].asset_amount()
+        App.localGet(Int(0), Bytes("trade")) - Gtxn[1].asset_amount()
     )
     #
     on_trade = Seq([
