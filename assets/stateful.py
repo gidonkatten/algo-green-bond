@@ -321,7 +321,7 @@ def contract(stablecoin_id_arg):
         coupon_stablecoin_transfer_stored.store(coupon_stablecoin_transfer),
         # tx0 - call to this app
         # tx1 - coupon stablecoin transfer from escrow to caller
-        Assert(linked_with_stablecoin_escrow),
+        Assert(Gtxn[1].sender() == App.globalGet(Bytes("stablecoin_escrow_addr"))),
         Assert(Gtxn[1].asset_receiver() == Gtxn[0].sender()),
         Assert(Gtxn[1].asset_amount() == coupon_stablecoin_transfer_stored.load()),
         # owed coupon
