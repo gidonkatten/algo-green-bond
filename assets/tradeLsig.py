@@ -35,7 +35,7 @@ def contract(app_id_arg, stablecoin_id_arg, bond_id_arg, lv_arg, trade_price_arg
         Gtxn[2].asset_close_to() == Global.zero_address()
     )
 
-    return ssc_call & fee & bond & stablecoin
+    return And(ssc_call, fee, bond, stablecoin)
 
 
 if __name__ == "__main__":

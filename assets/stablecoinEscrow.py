@@ -26,13 +26,13 @@ def contract(app_id_arg, stablecoin_id_arg, lv_arg):
     )
 
     # CLAIM COUPON
-    on_coupon = (Global.group_size() == Int(2)) & stablecoin_transfer(1)
+    on_coupon = And(Global.group_size() == Int(2), stablecoin_transfer(1))
 
     # CLAIM PRINCIPAL
-    on_principal = (Global.group_size() == Int(3)) & stablecoin_transfer(2)
+    on_principal = And(Global.group_size() == Int(3), stablecoin_transfer(2))
 
     # CLAIM DEFAULT
-    on_default = Global.group_size() == Int(3) & stablecoin_transfer(2)
+    on_default = And(Global.group_size() == Int(3), stablecoin_transfer(2))
 
     # common to all functions
     linked_with_app_call = And(
